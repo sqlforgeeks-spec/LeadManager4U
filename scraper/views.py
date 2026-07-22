@@ -10,14 +10,16 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from .models import BusinessListing, ScrapeJob, JobLog, EmailCampaign, EmailSend, SmtpProfile
 from .scraper import scrape_google_maps, StopScrape, create_shared_drivers
 from .search_scraper import scrape_search_engine, StopScrape as SearchStopScrape
+from .bing_maps_scraper import scrape_bing_maps, StopScrape as BingStopScrape
 from .email_sender import launch_campaign
+from .ai_engine import generate_email_templates, generate_smart_tips, score_lead, score_lead_label, detect_industry
 from .domains import DOMAINS
 import threading
 import queue
 import time
 import pandas as pd
 
-MAX_RESULTS_CAP = 5000
+MAX_RESULTS_CAP = 50000
 ACTIVE_JOBS = set()
 ACTIVE_JOBS_LOCK = threading.Lock()
 ACTIVE_CAMPAIGNS = set()
@@ -113,56 +115,16 @@ def _global_stats():
 
 
 def _ai_tips(stats):
-    """Generate contextual smart tips based on current data."""
-    tips = []
-    total_leads = stats["total_leads"]
-    emails = stats["leads_with_email"]
-    active = stats["active_jobs"]
+    """Generate contextual AI-powered tips based on current data."""
+    tips = generate_smart_tips(stats)
 
-    if total_leads == 0:
-        tips.append({
-            "icon": "🚀",
-            "type": "info",
-            "text": "Start by running a Google Maps scrape or Search Engine scrape to collect your first leads.",
-        })
-    elif total_leads > 0 and emails == 0:
-        tips.append({
-            "icon": "📧",
-            "type": "warning",
-            "text": f"You have {total_leads:,} leads but no emails yet. Run a Search Engine scrape to find contact emails.",
-        })
-    elif total_leads > 0 and emails < total_leads * 0.1:
-        pct = int(emails * 100 / total_leads) if total_leads else 0
-        tips.append({
-            "icon": "📬",
-            "type": "warning",
-            "text": f"Only {pct}% of your leads have emails. Try Search Engine scraping to boost email coverage.",
-        })
-
-    completed_no_campaign = ScrapeJob.objects.filter(
-        status__in=["completed", "completed_with_errors"],
-        auto_campaign_created=False,
-    ).exclude(listings__isnull=True).first()
-    if completed_no_campaign and emails > 0:
-        tips.append({
-            "icon": "✉️",
-            "type": "success",
-            "text": f"Job #{completed_no_campaign.id} is done — an email campaign draft was auto-created for you. Check Campaigns!",
-        })
-
+    # Add scheduled campaign tip
     scheduled = EmailCampaign.objects.filter(status="scheduled").count()
     if scheduled:
         tips.append({
             "icon": "⏰",
             "type": "info",
             "text": f"{scheduled} campaign{'s' if scheduled > 1 else ''} scheduled and will send automatically.",
-        })
-
-    if active > 2:
-        tips.append({
-            "icon": "⚡",
-            "type": "warning",
-            "text": f"{active} jobs running simultaneously. Consider pausing some to avoid rate limits.",
         })
 
     return tips[:3]  # Max 3 tips
@@ -173,6 +135,7 @@ def _ai_tips(stats):
 def home(request):
     if request.method == "POST":
         return _start_maps_job(request)
+
 
     recent_jobs = list(ScrapeJob.objects.order_by("-created_at")[:12])
     refresh_home = any(j.status in {"queued", "running", "paused"} for j in recent_jobs)
@@ -200,6 +163,7 @@ def _start_maps_job(request):
     locations_raw = request.POST.get("locations", "")
     domain = request.POST.get("domain", "com").strip()
     speed = request.POST.get("speed", "normal").strip()
+    source = request.POST.get("source", "maps").strip()
     auto_campaign = request.POST.get("auto_campaign", "") == "1"
     try:
         max_results = min(MAX_RESULTS_CAP, max(1, int(request.POST.get("max_results", "1000"))))
@@ -207,11 +171,13 @@ def _start_maps_job(request):
         max_results = 1000
     if speed not in {"slow", "normal", "fast"}:
         speed = "normal"
+    if source not in {"maps", "bing_maps"}:
+        source = "maps"
 
     locations = [loc.strip() for loc in locations_raw.split(",") if loc.strip()]
     job = ScrapeJob.objects.create(
         status="queued",
-        source="maps",
+        source=source,
         search_phrase=search_phrase,
         domain=domain,
         locations=locations_raw,
@@ -219,6 +185,13 @@ def _start_maps_job(request):
         total_locations=len(locations),
         speed=speed,
     )
+    if source == "bing_maps":
+        threading.Thread(
+            target=run_bing_maps_scrape,
+            args=(job.id, search_phrase, locations, max_results, auto_campaign),
+            daemon=True,
+        ).start()
+        return redirect("job_detail", job_id=job.id)
     threading.Thread(
         target=run_scrape,
         args=(job.id, search_phrase, locations, domain, max_results, auto_campaign),
@@ -228,6 +201,134 @@ def _start_maps_job(request):
 
 
 # ─── Maps Scraping ───────────────────────────────────────────────────────────
+
+def run_bing_maps_scrape(job_id, search_phrase, locations, max_results, auto_campaign=True):
+    """Background thread: scrape Bing Maps for all locations."""
+    _set_job_active(job_id, True)
+    close_old_connections()
+    try:
+        job = ScrapeJob.objects.get(id=job_id)
+    except ScrapeJob.DoesNotExist:
+        _set_job_active(job_id, False)
+        return
+
+    try:
+        job.status = "running"
+        job.total_locations = max(job.total_locations, len(locations))
+        job.save(update_fields=["status", "total_locations", "updated_at"])
+        _log(job, f"[BingMaps] Job started: '{search_phrase}' ({job.total_locations} locations, target {max_results}).")
+
+        if not locations:
+            job.status = "failed"
+            job.last_error = "No locations provided."
+            job.save(update_fields=["status", "last_error", "updated_at"])
+            _log(job, "No locations provided. Job failed.", level="ERROR")
+            return
+
+        total_results = 0
+        had_errors = False
+        seen_keys = set()
+        email_cache = {}
+        email_cache_lock = threading.Lock()
+
+        last_pause_check = {"time": 0, "paused": False}
+        last_stop_check = {"time": 0, "stop": False}
+
+        def should_pause():
+            now = time.time()
+            if now - last_pause_check["time"] > 2:
+                status = ScrapeJob.objects.filter(id=job_id).values_list("status", flat=True).first()
+                last_pause_check["paused"] = status == "paused"
+                last_pause_check["time"] = now
+            return last_pause_check["paused"]
+
+        def should_stop():
+            now = time.time()
+            if now - last_stop_check["time"] > 2:
+                row = ScrapeJob.objects.filter(id=job_id).values_list("status", "last_error").first()
+                if row:
+                    last_stop_check["stop"] = row[0] == "failed" and row[1] == "Stopped by user."
+                else:
+                    last_stop_check["stop"] = True
+                last_stop_check["time"] = now
+            return last_stop_check["stop"]
+
+        total_locations = len(locations)
+
+        for idx, loc in enumerate(locations, start=1):
+            if total_results >= max_results:
+                break
+            remaining = max_results - total_results
+            _log(job, f"[BingMaps] Scraping location {idx}/{total_locations}: {loc} (target {remaining}).")
+
+            try:
+                results = scrape_bing_maps(
+                    search_phrase, loc,
+                    max_results=remaining,
+                    log_fn=lambda message: _log(job, message),
+                    should_pause_fn=should_pause,
+                    should_stop_fn=should_stop,
+                    speed=job.speed,
+                    email_cache=email_cache,
+                    email_cache_lock=email_cache_lock,
+                )
+
+                for res in results:
+                    key = res.get("website", "") or f"{res.get('name','').lower()}|{loc.lower()}"
+                    if key in seen_keys:
+                        continue
+                    seen_keys.add(key)
+                    try:
+                        _db_retry(
+                            BusinessListing.objects.create,
+                            job=job, source="bing_maps",
+                            name=res.get("name", ""), phone=res.get("phone", ""),
+                            email=res.get("email", ""), website=res.get("website", ""),
+                            maps_url=res.get("maps_url", ""),
+                            address=res.get("address", ""),
+                            search_query=search_phrase, location=loc,
+                        )
+                        total_results += 1
+                    except Exception as exc:
+                        had_errors = True
+                        _log(job, f"DB write error: {exc}", level="ERROR")
+
+                job.collected_listings = total_results
+                job.processed_listings = total_results
+                job.emails_found = BusinessListing.objects.filter(job=job).exclude(email="").count()
+                job.processed_locations = idx
+                job.save(update_fields=["collected_listings", "processed_listings", "emails_found", "processed_locations", "updated_at"])
+                _log(job, f"[BingMaps] Location {loc} done. {len(results)} listings added.")
+
+            except (BingStopScrape, StopScrape):
+                had_errors = True
+                job.last_error = "Stopped by user."
+                job.save(update_fields=["last_error", "updated_at"])
+                _log(job, "Stop requested. Ending job.", level="ERROR")
+                break
+            except Exception as exc:
+                had_errors = True
+                job.last_error = str(exc)
+                job.processed_locations = idx
+                job.save(update_fields=["last_error", "processed_locations", "updated_at"])
+                _log(job, f"[BingMaps] Error scraping {loc}: {exc}", level="ERROR")
+
+        job.status = "failed" if (total_results == 0 and had_errors) else ("completed_with_errors" if had_errors else "completed")
+        job.save(update_fields=["status", "updated_at"])
+        _log(job, f"[BingMaps] Job {job.status.replace('_', ' ')}.")
+
+        if job.status in {"completed", "completed_with_errors"} and auto_campaign:
+            _auto_create_campaign(job)
+
+    except Exception as exc:
+        job.status = "failed"
+        job.last_error = str(exc)
+        job.save(update_fields=["status", "last_error", "updated_at"])
+        _log(job, f"[BingMaps] Job crashed: {exc}", level="ERROR")
+    finally:
+        close_old_connections()
+        _set_job_active(job_id, False)
+
 
 def run_scrape(job_id, search_phrase, locations, domain, max_results, auto_campaign=True):
     _set_job_active(job_id, True)
@@ -499,6 +600,23 @@ def _auto_create_campaign(job):
 
 # ─── Search Engine Scraping ───────────────────────────────────────────────────
 
+def bing_maps_home(request):
+    """Dedicated Bing Maps scraper page."""
+    if request.method == "POST":
+        return _start_maps_job(request)
+
+    recent_jobs = list(ScrapeJob.objects.filter(source="bing_maps").order_by("-created_at")[:12])
+    refresh_home = any(j.status in {"queued", "running", "paused"} for j in recent_jobs)
+    stats = _global_stats()
+    return render(request, "bing_maps_home.html", {
+        "recent_jobs": recent_jobs,
+        "refresh_home": refresh_home,
+        "global_stats": stats,
+        "ai_tips": _ai_tips(stats),
+        "active_page": "bing_maps",
+    })
+
+
 def search_home(request):
     if request.method == "POST":
         return _start_search_job(request)
@@ -527,7 +645,7 @@ def _start_search_job(request):
     if search_type not in {"web", "images", "videos", "news"}:
         search_type = "web"
     try:
-        max_results = min(500, max(1, int(request.POST.get("max_results", "100"))))
+        max_results = min(MAX_RESULTS_CAP, max(1, int(request.POST.get("max_results", "100"))))
     except ValueError:
         max_results = 100
 
@@ -734,7 +852,7 @@ def leads(request):
 
 def job_detail(request, job_id):
     job = get_object_or_404(ScrapeJob, id=job_id)
-    if job.source != "maps":
+    if job.source not in {"maps", "bing_maps"}:
         return redirect("search_job_detail", job_id=job_id)
     listings = BusinessListing.objects.filter(job=job).order_by("-scraped_at")[:200]
     logs = job.logs.order_by("-created_at")[:200]
@@ -1089,6 +1207,9 @@ def resume_job(request, job_id):
             if job.source == "maps":
                 locations = [loc.strip() for loc in job.locations.split(",") if loc.strip()]
                 threading.Thread(target=run_scrape, args=(job.id, job.search_phrase, locations, job.domain, job.max_results), daemon=True).start()
+            elif job.source == "bing_maps":
+                locations = [loc.strip() for loc in job.locations.split(",") if loc.strip()]
+                threading.Thread(target=run_bing_maps_scrape, args=(job.id, job.search_phrase, locations, job.max_results), daemon=True).start()
             else:
                 threading.Thread(target=run_search_scrape, args=(job.id,), daemon=True).start()
     return _redirect_back(request, reverse("job_detail", args=[job.id]))
@@ -1160,3 +1281,32 @@ def download_job_website_csv(request, job_id):
 
 def results(request):
     return redirect("leads")
+
+
+# ─── AI Feature Endpoints ─────────────────────────────────────────────────────
+
+def api_ai_templates(request):
+    """Generate AI email templates for a search phrase."""
+    search_phrase = request.GET.get("q", "").strip()
+    if not search_phrase:
+        return JsonResponse({"templates": [], "industry": "default"})
+    from .ai_engine import generate_email_templates, detect_industry
+    templates = generate_email_templates(search_phrase, count=3)
+    industry = detect_industry(search_phrase)
+    return JsonResponse({"templates": templates, "industry": industry})
+
+
+def api_lead_scores(request):
+    """Return AI lead scores for all leads (or a job's leads)."""
+    job_id = request.GET.get("job_id", "")
+    qs = BusinessListing.objects.all()
+    if job_id:
+        qs = qs.filter(job_id=job_id)
+    qs = qs[:500]
+    from .ai_engine import score_lead, score_lead_label
+    scores = []
+    for lead in qs:
+        s = score_lead({"name": lead.name, "email": lead.email, "phone": lead.phone,
+                        "website": lead.website, "address": lead.address})
+        scores.append({"id": lead.id, "score": s, "label": score_lead_label(s)})
+    return JsonResponse({"scores": scores})

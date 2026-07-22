@@ -40,12 +40,15 @@
     <div class="toolbar-filters">
       <select name="source" class="form-select" style="min-width:150px;" onchange="this.form.submit()">
         <option value="">All Sources</option>
-        <option value="maps" {% if filters.source == "maps" %}selected{% endif %}>Google Maps</option>
-        <option value="google" {% if filters.source == "google" %}selected{% endif %}>Google Search</option>
-        <option value="bing" {% if filters.source == "bing" %}selected{% endif %}>Bing</option>
-        <option value="yahoo" {% if filters.source == "yahoo" %}selected{% endif %}>Yahoo</option>
-        <option value="duckduckgo" {% if filters.source == "duckduckgo" %}selected{% endif %}>DuckDuckGo</option>
-        <option value="yandex" {% if filters.source == "yandex" %}selected{% endif %}>Yandex</option>
+        <option value="maps" {% if filters.source == "maps" %}selected{% endif %}>🗺️ Google Maps</option>
+        <option value="bing_maps" {% if filters.source == "bing_maps" %}selected{% endif %}>🅱️ Bing Maps</option>
+        <option value="google" {% if filters.source == "google" %}selected{% endif %}>🔍 Google Search</option>
+        <option value="bing" {% if filters.source == "bing" %}selected{% endif %}>Ⓑ Bing</option>
+        <option value="yahoo" {% if filters.source == "yahoo" %}selected{% endif %}>Y! Yahoo</option>
+        <option value="duckduckgo" {% if filters.source == "duckduckgo" %}selected{% endif %}>🦆 DuckDuckGo</option>
+        <option value="yandex" {% if filters.source == "yandex" %}selected{% endif %}>Я Yandex</option>
+        <option value="ecosia" {% if filters.source == "ecosia" %}selected{% endif %}>🌿 Ecosia</option>
+        <option value="ask" {% if filters.source == "ask" %}selected{% endif %}>❓ Ask.com</option>
       </select>
       <select name="has_email" class="form-select" style="min-width:140px;" onchange="this.form.submit()">
         <option value="">Any Email</option>

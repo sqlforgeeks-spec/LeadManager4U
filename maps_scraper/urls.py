@@ -8,6 +8,9 @@ urlpatterns = [
     # Dashboard
     path('', views.home, name='home'),
 
+    # Bing Maps scraping
+    path('bing-maps/', views.bing_maps_home, name='bing_maps_home'),
+
     # Search engine scraping
     path('search/', views.search_home, name='search_home'),
     path('search/<int:job_id>/', views.search_job_detail, name='search_job_detail'),
@@ -43,6 +46,8 @@ urlpatterns = [
     # API
     path('api/jobs/recent/', views.api_recent_jobs, name='api_recent_jobs'),
     path('api/jobs/<int:job_id>/', views.api_job_status, name='api_job_status'),
+    path('api/ai/templates/', views.api_ai_templates, name='api_ai_templates'),
+    path('api/ai/scores/', views.api_lead_scores, name='api_lead_scores'),
 
     # Job detail & controls (maps)
     path('jobs/<int:job_id>/', views.job_detail, name='job_detail'),

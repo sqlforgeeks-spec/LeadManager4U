@@ -104,35 +104,60 @@ def _rand_ua():
     return random.choice(USER_AGENTS)
 
 
-def _fetch(url, timeout=14, extra_headers=None, retries=2):
-    """Fetch a URL with retry + jitter on failure."""
+def _reset_session():
+    """Force a fresh session with new headers."""
+    _SESSION_LOCAL.session = None
+
+
+def _fetch(url, timeout=14, extra_headers=None, retries=3):
+    """Fetch a URL with retry + jitter on failure. Auto-recovers from blocks."""
     for attempt in range(retries + 1):
         try:
             session = _get_session()
+            # Rotate UA on every request, especially on retries
             headers = {
                 "User-Agent": _rand_ua(),
                 "Cache-Control": "no-cache",
+                "Pragma": "no-cache",
             }
             if extra_headers:
                 headers.update(extra_headers)
-            # Add slight jitter before each request
+            # Progressive jitter on retries
             if attempt > 0:
-                time.sleep(random.uniform(5, 12))
+                wait = random.uniform(8, 20) * attempt
+                logger.debug(f"Retry {attempt}/{retries} for {url}, waiting {wait:.0f}s")
+                time.sleep(wait)
+                # Reset session to get fresh cookies/connection on retry
+                _reset_session()
             resp = session.get(url, headers=headers, timeout=timeout, allow_redirects=True)
             resp.raise_for_status()
             return resp.text
         except requests.exceptions.HTTPError as exc:
-            if exc.response is not None and exc.response.status_code in (429, 503):
-                wait = random.uniform(20, 40) * (attempt + 1)
-                logger.debug(f"Rate limited on {url}. Waiting {wait:.0f}s before retry {attempt+1}")
+            if exc.response is not None and exc.response.status_code in (429, 503, 403):
+                wait = random.uniform(30, 60) * (attempt + 1)
+                logger.debug(f"Rate limited ({exc.response.status_code}) on {url}. Waiting {wait:.0f}s before retry {attempt+1}")
                 time.sleep(wait)
+                _reset_session()
+            elif exc.response is not None and exc.response.status_code == 404:
+                return ""
             else:
                 logger.debug(f"HTTP error for {url}: {exc}")
+                if attempt < retries:
+                    time.sleep(random.uniform(3, 8))
+                else:
+                    return ""
+        except requests.exceptions.ConnectionError as exc:
+            logger.debug(f"Connection error for {url}: {exc}")
+            if attempt < retries:
+                time.sleep(random.uniform(5, 12))
+            else:
                 return ""
         except Exception as exc:
             logger.debug(f"Fetch failed for {url}: {exc}")
             if attempt < retries:
-                time.sleep(random.uniform(2, 5))
+                time.sleep(random.uniform(2, 6))
+            else:
+                return ""
     return ""
 
 
@@ -655,24 +680,33 @@ def scrape_search_engine(
             log(f"[{engine.upper()}] Empty response on page {page + 1}, stopping.")
             break
 
-        # CAPTCHA / bot block detection with retry + backoff
+        # CAPTCHA / bot block detection with auto-recovery
         if _is_captcha(html):
             if captcha_retries < max_captcha_retries:
                 captcha_retries += 1
-                wait_sec = random.uniform(*cfg.get("captcha_wait", (30, 60)))
-                log(f"[{engine.upper()}] ⚠️ Bot detection on page {page + 1}. Waiting {wait_sec:.0f}s and retrying ({captcha_retries}/{max_captcha_retries})…")
+                # Exponential backoff: longer waits on each retry
+                base_wait = cfg.get("captcha_wait", (30, 60))
+                wait_sec = random.uniform(base_wait[0], base_wait[1]) * captcha_retries
+                log(f"[{engine.upper()}] ⚠️ Bot detection on page {page + 1}. Auto-recovering — waiting {wait_sec:.0f}s (attempt {captcha_retries}/{max_captcha_retries})…")
                 time.sleep(wait_sec)
-                # Retry this same page
-                page -= 1  # will be incremented by for loop — use continue trick
+                # Reset session to clear tracking cookies
+                _SESSION_LOCAL.session = None
+                # Retry with a fresh session
                 try:
-                    html = cfg["fetch"](query, page + 1, per_page=per_page, country=country, search_type=search_type)
+                    html = cfg["fetch"](query, page, per_page=per_page, country=country, search_type=search_type)
                 except Exception:
                     html = ""
                 if not html or _is_captcha(html):
-                    log(f"[{engine.upper()}] Still blocked after retry. Stopping this engine.")
-                    break
+                    if captcha_retries >= max_captcha_retries:
+                        log(f"[{engine.upper()}] Still blocked after {max_captcha_retries} auto-recovery attempts. Stopping.")
+                        break
+                    # Continue loop — will try again next iteration
+                    continue
+                else:
+                    log(f"[{engine.upper()}] ✅ Auto-recovered from bot detection. Continuing…")
+                    captcha_retries = 0  # Reset counter on success
             else:
-                log(f"[{engine.upper()}] Bot detection after {max_captcha_retries} retries. Stopping.")
+                log(f"[{engine.upper()}] Bot detection — max retries reached. Moving on.")
                 break
 
         parsed = parse_fn(html, max_results)

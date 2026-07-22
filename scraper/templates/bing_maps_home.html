@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+
+{% block title %}Bing Maps Scraper{% endblock %}
+{% block topbar_title %}Bing Maps Scraper{% endblock %}
+
+{% block topbar_actions %}
+  <a href="{% url 'leads' %}" class="btn btn-secondary btn-sm">View Leads</a>
+  <a href="{% url 'new_campaign' %}" class="btn btn-primary btn-sm">+ New Campaign</a>
+{% endblock %}
+
+{% block content %}
+
+{% if ai_tips %}
+<div class="mb-24">
+  {% for tip in ai_tips %}
+  <div class="alert alert-{% if tip.type == 'warning' %}warning{% elif tip.type == 'success' %}success{% else %}info{% endif %} flex items-center gap-12" style="margin-bottom:8px;">
+    <span style="font-size:20px; flex-shrink:0;">{{ tip.icon }}</span>
+    <span>{{ tip.text }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- New Bing Maps Job -->
+<div class="new-job-panel mb-24" style="background:linear-gradient(135deg,#00897B 0%,#00BFA5 60%,#0F172A 100%);">
+  <div class="panel-title">🅱️ New Bing Maps Scrape</div>
+  <div class="panel-sub">Extract business names, phones, emails, websites, and addresses from Bing Maps.</div>
+  <form method="post" action="{% url 'bing_maps_home' %}">
+    {% csrf_token %}
+    <input type="hidden" name="source" value="bing_maps">
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Search Phrase</label>
+        <input type="text" name="search_phrase" class="form-input" placeholder="e.g. plumber, dentist, restaurant" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Locations (comma-separated)</label>
+        <input type="text" name="locations" class="form-input" placeholder="New York, London, Sydney" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Max Results</label>
+        <input type="number" name="max_results" class="form-input" min="1" max="50000" value="200">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Speed</label>
+        <select name="speed" class="form-select">
+          <option value="slow">Slow (stealth)</option>
+          <option value="normal" selected>Normal</option>
+          <option value="fast">Fast (aggressive)</option>
+        </select>
+      </div>
+      <div class="form-group" style="justify-content:flex-end; align-items:flex-end;">
+        <div style="margin-bottom:10px;">
+          <label class="form-check">
+            <input type="checkbox" name="auto_campaign" value="1" checked>
+            Auto-create email campaign when done
+          </label>
+        </div>
+        <button type="submit" class="btn btn-launch" style="background:#fff;color:#00897B;">🚀 Start Bing Maps Scrape</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div class="alert alert-info mb-24">
+  <strong>💡 Bing Maps Tips:</strong>
+  Bing Maps often returns different businesses than Google Maps — great for expanding your lead pool.
+  Use multiple locations to collect thousands of leads across regions.
+  Max results up to <strong>50,000</strong> per job.
+</div>
+
+<!-- Quick links -->
+<div class="flex gap-8 mb-24" style="flex-wrap:wrap;">
+  <a href="{% url 'home' %}" class="btn btn-secondary">🗺️ Google Maps</a>
+  <a href="{% url 'search_home' %}" class="btn btn-secondary">🔍 Search Engines</a>
+  <a href="{% url 'leads' %}" class="btn btn-secondary">👤 All Leads</a>
+  <a href="{% url 'download_csv' %}" class="btn btn-secondary">⬇️ Export All Leads</a>
+</div>
+
+<!-- Recent Bing Maps Jobs -->
+<div class="section-header">
+  <div class="section-title">Recent Bing Maps Jobs</div>
+  <div class="flex gap-8 items-center">
+    <span class="badge badge-live" id="live-badge" {% if not refresh_home %}style="display:none"{% endif %}>Live</span>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="window.location.reload()">Refresh</button>
+  </div>
+</div>
+
+{% if recent_jobs %}
+<div class="card">
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>#</th><th>Status</th><th>Query</th><th>Speed</th><th>Collected</th><th>Emails</th><th>Downloads</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for job in recent_jobs %}
+        <tr data-href="{% url 'job_detail' job.id %}">
+          <td class="text-muted font-mono">#{{ job.id }}</td>
+          <td><span class="badge badge-{{ job.status }}">{{ job.get_status_display }}</span></td>
+          <td style="max-width:200px"><span class="truncate" title="{{ job.search_phrase }}">{{ job.search_phrase }}</span> <span class="text-muted" style="font-size:11px;">{{ job.locations }}</span></td>
+          <td class="text-muted">{{ job.get_speed_display }}</td>
+          <td><strong>{{ job.collected_listings }}</strong><span class="text-muted">/{{ job.max_results }}</span></td>
+          <td class="text-success">{{ job.emails_found }}</td>
+          <td class="no-row-click">
+            <div class="download-strip">
+              <a class="download-btn" href="{% url 'download_job_csv' job.id %}">⬇ All</a>
+              <a class="download-btn" href="{% url 'download_job_email_csv' job.id %}">✉ Email</a>
+            </div>
+          </td>
+          <td class="no-row-click">
+            <div class="action-group">
+              {% if job.status == "running" %}
+                <form method="post" action="{% url 'pause_job' job.id %}">{% csrf_token %}<button type="submit" class="btn btn-secondary btn-sm">Pause</button></form>
+                <form method="post" action="{% url 'stop_job' job.id %}">{% csrf_token %}<button type="submit" class="btn btn-danger btn-sm">Stop</button></form>
+              {% elif job.status == "paused" %}
+                <form method="post" action="{% url 'resume_job' job.id %}">{% csrf_token %}<input type="hidden" name="resume_mode" value="continue"><button type="submit" class="btn btn-success btn-sm">Resume</button></form>
+                <form method="post" action="{% url 'stop_job' job.id %}">{% csrf_token %}<button type="submit" class="btn btn-danger btn-sm">Stop</button></form>
+              {% elif job.status in "completed,completed_with_errors" %}
+                <a href="{% url 'new_campaign' %}?job_id={{ job.id }}" class="btn btn-secondary btn-sm">✉ Campaign</a>
+                <form method="post" action="{% url 'delete_job' job.id %}" onsubmit="return confirm('Delete job #{{ job.id }} and all its leads?')">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">🗑</button></form>
+              {% elif job.status == "failed" %}
+                <form method="post" action="{% url 'resume_job' job.id %}">{% csrf_token %}<input type="hidden" name="resume_mode" value="restart_all"><button type="submit" class="btn btn-secondary btn-sm">Retry</button></form>
+                <form method="post" action="{% url 'delete_job' job.id %}" onsubmit="return confirm('Delete job #{{ job.id }}?')">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">🗑</button></form>
+              {% else %}
+                <span class="text-muted" style="font-size:12px;">{{ job.get_status_display }}</span>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="empty-state">
+    <div class="empty-icon">🅱️</div>
+    <div class="empty-title">No Bing Maps jobs yet</div>
+    <div class="empty-desc">Use the form above to start scraping Bing Maps for leads.</div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+{% if refresh_home %}
+let timer = setInterval(() => {
+  fetch("{% url 'api_recent_jobs' %}").then(r => r.json()).then(data => {
+    if (data.stats.running > 0 || data.stats.queued > 0) window.location.reload();
+  }).catch(() => {});
+}, 12000);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) clearInterval(timer);
+  else timer = setInterval(() => window.location.reload(), 12000);
+});
+{% endif %}
+</script>
+{% endblock %}

@@ -14,6 +14,27 @@
   <strong>📧 Personalisation:</strong> Use <code>{name}</code>, <code>{email}</code>, <code>{phone}</code>, <code>{website}</code>, <code>{location}</code> in subject and body — replaced per recipient.
 </div>
 
+<!-- AI Template Generator -->
+<div class="card mb-24" id="ai-template-card" style="border:2px solid #8B5CF6; background:linear-gradient(135deg,#F5F3FF,#FAFAFA);">
+  <div class="card-header" style="background:transparent; border-color:#EDE9FE;">
+    <div class="card-title" style="color:#7C3AED;">✨ AI Email Template Generator</div>
+    <span class="badge" style="background:#F5F3FF; color:#7C3AED;">Beta</span>
+  </div>
+  <div class="card-body">
+    <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">
+      Enter your search phrase and the AI engine will suggest industry-specific subject lines and email body templates. Click any to load it into the form.
+    </p>
+    <div class="flex gap-8" style="margin-bottom:12px;">
+      <input type="text" id="ai-phrase-input" class="form-input" placeholder="e.g. dentist, plumber, restaurant, law firm…" style="max-width:360px;">
+      <button type="button" class="btn btn-sm" id="ai-gen-btn" style="background:#8B5CF6; color:#fff; border-color:#8B5CF6;">✨ Generate Templates</button>
+    </div>
+    <div id="ai-templates-out" style="display:none;">
+      <div id="ai-template-cards" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;"></div>
+    </div>
+    <div id="ai-loading" style="display:none; color:#8B5CF6; font-size:13px;">⏳ Generating templates…</div>
+  </div>
+</div>
+
 <form method="post" action="{% url 'new_campaign' %}">
   {% csrf_token %}
 
@@ -23,11 +44,11 @@
       <div class="form-grid">
         <div class="form-group">
           <label class="form-label">Campaign Name *</label>
-          <input type="text" name="name" class="form-input" placeholder="Q3 Outreach – Dentists" required>
+          <input type="text" name="name" class="form-input" placeholder="Q3 Outreach – Dentists" required id="campaign-name">
         </div>
         <div class="form-group">
           <label class="form-label">Email Subject *</label>
-          <input type="text" name="subject" class="form-input" placeholder="Hi {name}, I found your business…" required>
+          <input type="text" name="subject" class="form-input" placeholder="Hi {name}, I found your business…" required id="campaign-subject">
         </div>
         <div class="form-group full">
           <label class="form-label">Lead Source — filter by job (optional)</label>
@@ -41,7 +62,7 @@
         </div>
         <div class="form-group full">
           <label class="form-label">Email Body *</label>
-          <textarea name="body" class="form-textarea" rows="10" placeholder="Hi {name},&#10;&#10;I came across your business and wanted to reach out…&#10;&#10;Best regards" required></textarea>
+          <textarea name="body" class="form-textarea" rows="10" placeholder="Hi {name},&#10;&#10;I came across your business and wanted to reach out…&#10;&#10;Best regards" required id="campaign-body"></textarea>
           <div class="form-hint">Placeholders: {name} {email} {phone} {website} {location} {address}</div>
         </div>
       </div>
@@ -145,6 +166,62 @@ if (jobId) {
     [...sel.options].forEach(opt => {
       if (opt.value === jobId) opt.selected = true;
     });
+  }
+}
+
+// AI Template Generator
+const aiBtn = document.getElementById('ai-gen-btn');
+const aiInput = document.getElementById('ai-phrase-input');
+const aiOut = document.getElementById('ai-templates-out');
+const aiCards = document.getElementById('ai-template-cards');
+const aiLoading = document.getElementById('ai-loading');
+
+function escHtml(s) { return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+function loadTemplate(subject, body, industry) {
+  const subjectEl = document.getElementById('campaign-subject');
+  const bodyEl = document.getElementById('campaign-body');
+  const nameEl = document.getElementById('campaign-name');
+  if (subjectEl) subjectEl.value = subject;
+  if (bodyEl) bodyEl.value = body;
+  if (nameEl && !nameEl.value) nameEl.value = `${industry.charAt(0).toUpperCase() + industry.slice(1)} Outreach — ${new Date().toLocaleDateString()}`;
+  // Scroll to form
+  document.querySelector('form')?.scrollIntoView({ behavior: 'smooth' });
+}
+
+if (aiBtn && aiInput) {
+  aiBtn.addEventListener('click', () => {
+    const phrase = aiInput.value.trim();
+    if (!phrase) { aiInput.focus(); return; }
+    aiLoading.style.display = 'block';
+    aiOut.style.display = 'none';
+    aiBtn.disabled = true;
+    fetch(`/api/ai/templates/?q=${encodeURIComponent(phrase)}`)
+      .then(r => r.json())
+      .then(data => {
+        aiLoading.style.display = 'none';
+        aiBtn.disabled = false;
+        const templates = data.templates || [];
+        const industry = data.industry || 'default';
+        if (!templates.length) { aiOut.style.display = 'none'; return; }
+        aiCards.innerHTML = templates.map((t, i) => `
+          <div class="ai-template-card" onclick="loadTemplate(${JSON.stringify(t.subject)}, ${JSON.stringify(t.body)}, ${JSON.stringify(t.industry)})">
+            <div class="ai-tmpl-label">Template ${i+1}</div>
+            <div class="ai-tmpl-subject">${escHtml(t.subject)}</div>
+            <div class="ai-tmpl-preview">${escHtml(t.body.substring(0,120))}…</div>
+            <div class="ai-tmpl-use">Click to use →</div>
+          </div>
+        `).join('');
+        aiOut.style.display = 'block';
+      })
+      .catch(() => { aiLoading.style.display = 'none'; aiBtn.disabled = false; });
+  });
+  // Auto-trigger if there's a phrase from job filter name
+  const jobSel = document.getElementById('job-filter-sel');
+  if (jobSel && jobSel.value) {
+    const txt = jobSel.options[jobSel.selectedIndex]?.text || '';
+    const m = txt.match(/#\d+ — (.+?) \(/);
+    if (m && m[1]) aiInput.value = m[1];
   }
 }
 </script>

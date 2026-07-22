@@ -35,6 +35,7 @@ class ScrapeJob(models.Model):
 
     SOURCE_CHOICES = [
         ("maps", "Google Maps"),
+        ("bing_maps", "Bing Maps"),
         ("google", "Google Search"),
         ("bing", "Bing"),
         ("yahoo", "Yahoo"),
@@ -80,6 +81,7 @@ class ScrapeJob(models.Model):
     def get_source_display_icon(self):
         icons = {
             "maps": "🗺️",
+            "bing_maps": "🅱️",
             "google": "🔍",
             "bing": "Ⓑ",
             "yahoo": "Y!",

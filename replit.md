@@ -1,75 +1,76 @@
 # LeadManager4U
 
-A premium, full-featured lead generation platform that scrapes business data from Google Maps and multiple search engines, then enables email outreach campaigns.
-
-## Stack
-
-- **Backend:** Django 5.1 (Python 3.12)
-- **Database:** SQLite (WAL mode for concurrency)
-- **Scraping:** Selenium + Chrome (Google Maps), requests + BeautifulSoup (search engines)
-- **Email:** SMTP (smtplib) — configurable per campaign
-- **Frontend:** Vanilla JS, Inter font, dark-sidebar SaaS design
-
-## Running
-
-```bash
-pip install -r requirements.txt
-python manage.py migrate
-python manage.py runserver 0.0.0.0:5000
-```
+A premium Django lead-generation platform that scrapes business data from Google Maps, Bing Maps, and major search engines, then manages email outreach campaigns.
 
 ## Features
 
 ### Scraping
-- **Google Maps** — Selenium-based scraper with concurrent drivers, pause/resume/stop, duplicate detection, WAL-mode SQLite writes
-- **Search Engines** — Modular scraper supporting Google, Bing, Yahoo, DuckDuckGo, Yandex via requests+BeautifulSoup. Visits each result's website to find emails and phone numbers.
+- **Google Maps** — Selenium-based, extracts name, phone, website, address, email
+- **Bing Maps** — Selenium-based (new), same data as Google Maps with different coverage
+- **Search Engines** — requests + BeautifulSoup scraper for Google, Bing, Yahoo, DuckDuckGo, Yandex, Ecosia, Ask
+- Up to **50,000 results** per job
+- Anti-block: rotating user-agents, session resets, exponential backoff, auto-recovery from CAPTCHAs
+- Parallel enrichment: visits business websites to extract emails and phones
+- Pause/resume/stop controls on all jobs
 
-### Lead Management (`/leads/`)
-- Filter by source, email, phone, job
-- Full-text search
-- CSV exports (all / emails / phones / websites)
+### Leads Management
+- Filter by source, email/phone presence, job, free-text search
+- Export: full CSV, emails-only, phones-only, websites-only
+- Per-job export
 
-### Email Campaigns (`/campaigns/`)
-- Configure SMTP per campaign (Gmail App Passwords supported)
-- Body personalisation: `{name}`, `{email}`, `{phone}`, `{website}`, `{location}`
-- Per-send status tracking (sent / failed / skipped)
-- Filter recipients by job or use all leads
+### Email Campaigns
+- Personalized body with `{name}`, `{email}`, `{phone}`, `{website}`, `{location}` placeholders
+- SMTP profile management (save and reuse credentials)
+- Send now, schedule for later, stop, resend failed
+- Campaign progress tracking
 
-### Live Updates
-- Job detail pages poll `/api/jobs/<id>/` every 6s
-- Dashboard polls `/api/jobs/recent/` every 12s
-- Progress bars, log console, live results table
+### AI Features
+- **AI Email Template Generator** — detects industry from search phrase, generates 3 subject + body templates
+- **Smart Tips** — contextual advice on dashboard based on lead stats
+- **Lead Scoring** API — scores 0–100 based on data completeness
+- Industry detection for: dental, legal, medical, restaurant, plumbing, construction, marketing, accounting, salon, fitness, tech, and more
+
+## Architecture
+
+- **Backend**: Django 6.x, SQLite (WAL mode)
+- **Scrapers**: `scraper/scraper.py` (Google Maps), `scraper/bing_maps_scraper.py` (Bing Maps), `scraper/search_scraper.py` (search engines)
+- **AI**: `scraper/ai_engine.py` — rule-based, no external API required
+- **Email**: `scraper/email_sender.py` — smtplib with TLS/SSL
+- **Frontend**: Django templates, vanilla JS, custom CSS (Inter font, dark sidebar)
+
+## Run Command
+
+```
+python manage.py runserver 0.0.0.0:5000
+```
 
 ## Environment Variables
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `SESSION_SECRET` | (insecure default) | Django SECRET_KEY |
-| `DEBUG` | `True` | Django debug mode |
-| `SMTP_HOST` | `smtp.gmail.com` | Default SMTP host |
-| `SMTP_PORT` | `587` | Default SMTP port |
-| `SMTP_USER` | — | Default SMTP user |
-| `SMTP_PASS` | — | Default SMTP password |
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SESSION_SECRET` | Django SECRET_KEY | insecure fallback |
+| `SMTP_HOST` | Default SMTP host | smtp.gmail.com |
+| `SMTP_PORT` | Default SMTP port | 587 |
+| `SMTP_USER` | Default SMTP user | (empty) |
+| `SMTP_PASS` | Default SMTP password | (empty) |
+| `SCRAPER_WORKERS` | Google Maps detail workers | 5 |
+| `SCRAPER_EMAIL_WORKERS` | Email extraction workers | 6 |
 
-## Project Structure
+## Key URLs
 
-```
-maps_scraper/      Django project (settings, urls, wsgi)
-scraper/
-  models.py        ScrapeJob, BusinessListing, JobLog, EmailCampaign, EmailSend
-  views.py         All request handlers
-  scraper.py       Google Maps Selenium scraper
-  search_scraper.py  Multi-engine search scraper (requests)
-  email_sender.py  SMTP campaign sender
-  domains.py       Google domain list
-  templates/       All HTML templates
-  static/          styles.css (Inter, dark sidebar design)
-  migrations/      Django migrations
-```
+| Path | Description |
+|------|-------------|
+| `/` | Dashboard + Google Maps scraper |
+| `/bing-maps/` | Bing Maps scraper |
+| `/search/` | Search engine scraper |
+| `/leads/` | Lead management |
+| `/campaigns/` | Email campaigns |
+| `/smtp/` | SMTP profiles |
+| `/api/ai/templates/?q=dentist` | AI template generator |
+| `/api/ai/scores/` | Lead scoring API |
 
 ## User Preferences
 
-- Email-only outreach (no WhatsApp/SMS)
-- Keep existing Google Maps scraper working
-- Dark sidebar SaaS dashboard design
-- No destructive restructuring of original scraper logic
+- Keep existing structure and stack (Django + SQLite)
+- Max results up to 50,000 (no arbitrary caps)
+- Anti-block must auto-recover without stopping jobs

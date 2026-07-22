@@ -1,0 +1,29 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in — LeadManager4U.ai</title>
+  <link rel="stylesheet" href="{% static 'scraper/styles.css' %}">
+</head>
+<body class="login-page">
+  <main class="login-card">
+    <div class="login-brand-mark">LM</div>
+    <div class="login-brand">LeadManager4U<span>.ai</span></div>
+    <p class="login-subtitle">Sign in to manage your leads and outreach.</p>
+    {% if form.errors %}
+      <div class="alert alert-error">Your username or password was not recognised.</div>
+    {% endif %}
+    <form method="post" class="login-form">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ next }}">
+      <label class="form-label" for="id_username">Username</label>
+      <input class="form-input" id="id_username" name="username" type="text" autocomplete="username" autofocus required>
+      <label class="form-label" for="id_password">Password</label>
+      <input class="form-input" id="id_password" name="password" type="password" autocomplete="current-password" required>
+      <button class="btn btn-primary btn-lg" type="submit">Sign in</button>
+    </form>
+  </main>
+</body>
+</html>

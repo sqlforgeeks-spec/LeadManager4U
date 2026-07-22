@@ -8,6 +8,7 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.db.models import Q
 from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth import authenticate, login, logout
 
 from .models import (
     BusinessListing, ScrapeJob, JobLog, EmailCampaign, EmailSend,
@@ -34,6 +35,34 @@ ACTIVE_CAMPAIGNS_LOCK = threading.Lock()
 # ─── Scheduler thread (for scheduled campaigns) ───────────────────────────────
 _scheduler_started = False
 _scheduler_lock = threading.Lock()
+
+
+def login_view(request):
+    if request.user.is_authenticated:
+        return redirect(request.GET.get("next") or "home")
+    if request.method == "POST":
+        username = request.POST.get("username", "").strip()
+        user = authenticate(request, username=username, password=request.POST.get("password", ""))
+        if user is not None:
+            login(request, user)
+            next_url = request.POST.get("next") or request.GET.get("next") or reverse("home")
+            return redirect(next_url)
+    return render(request, "login.html", {"next": request.GET.get("next", "")})
+
+
+def logout_view(request):
+    logout(request)
+    return redirect("login")
+
+
+def _mark_contacted_for_followup(listing, interval_days=1):
+    """Move a contacted lead into the pipeline and schedule its next touch."""
+    from datetime import timedelta
+    if listing.lead_status in ("converted", "stopped"):
+        return
+    listing.lead_status = "following_up"
+    listing.follow_up_date = timezone.localdate() + timedelta(days=interval_days)
+    listing.save(update_fields=["lead_status", "follow_up_date"])
 
 
 def _start_scheduler():
@@ -212,6 +241,7 @@ def _get_notifications():
     today = date.today()
     one_day_ago = now - timedelta(days=1)
     seven_days_ago = now - timedelta(days=7)
+    fourteen_days_ago = now - timedelta(days=14)
     notifs = []
 
     # Overdue follow-ups based on follow_up_date field
@@ -262,6 +292,18 @@ def _get_notifications():
             "icon": "📅",
             "message": f"{contacted_week} lead{'s' if contacted_week > 1 else ''} contacted 7 days ago — time to re-engage!",
             "url": "/leads/?contacted=7d",
+        })
+
+    # Leads contacted 14 days ago — final re-engagement reminder
+    contacted_fortnight = ContactAttempt.objects.filter(
+        contacted_at__date=fourteen_days_ago.date()
+    ).values("listing_id").distinct().count()
+    if contacted_fortnight:
+        notifs.append({
+            "type": "info",
+            "icon": "📣",
+            "message": f"{contacted_fortnight} lead{'s' if contacted_fortnight > 1 else ''} contacted 14 days ago — final follow-up window!",
+            "url": "/leads/?contacted=14d",
         })
 
     return notifs
@@ -1239,6 +1281,13 @@ def _build_leads_qs(request_get):
             contacted_at__date=seven_days_ago.date()
         ).values_list("listing_id", flat=True)
         qs = qs.filter(id__in=contacted_ids)
+    elif contacted_filter == "14d":
+        from datetime import timedelta
+        fourteen_days_ago = timezone.now() - timedelta(days=14)
+        contacted_ids = ContactAttempt.objects.filter(
+            contacted_at__date=fourteen_days_ago.date()
+        ).values_list("listing_id", flat=True)
+        qs = qs.filter(id__in=contacted_ids)
     elif contacted_filter == "never":
         contacted_ids = ContactAttempt.objects.values_list("listing_id", flat=True).distinct()
         qs = qs.exclude(id__in=contacted_ids)
@@ -1319,8 +1368,14 @@ def log_contact(request, listing_id):
     if channel not in {"email", "gmail", "whatsapp", "telegram", "call"}:
         channel = "email"
     ContactAttempt.objects.create(listing=listing, channel=channel, notes=notes)
+    _mark_contacted_for_followup(listing)
     if request.headers.get("x-requested-with") == "XMLHttpRequest":
-        return JsonResponse({"ok": True, "channel": channel})
+        return JsonResponse({
+            "ok": True,
+            "channel": channel,
+            "lead_status": listing.lead_status,
+            "follow_up_date": listing.follow_up_date.isoformat() if listing.follow_up_date else None,
+        })
     return _redirect_back(request, reverse("leads"))
 
 

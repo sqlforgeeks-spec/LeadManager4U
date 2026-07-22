@@ -542,8 +542,12 @@ function openFollowupPicker(el, listingId, currentDate, e) {
   e.stopPropagation();
   _followupListingId = listingId;
   const rect = el.getBoundingClientRect();
-  _fpop.style.top = (rect.bottom + 4) + 'px';
-  _fpop.style.left = Math.min(rect.left, window.innerWidth - 250) + 'px';
+  const popoverHeight = 190;
+  const top = rect.bottom + 4 + popoverHeight > window.innerHeight
+    ? Math.max(8, rect.top - popoverHeight - 4)
+    : rect.bottom + 4;
+  _fpop.style.top = top + 'px';
+  _fpop.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 250)) + 'px';
   document.getElementById('followup-date-input').value = currentDate || '';
   _fpop.style.display = 'block';
 }
@@ -724,6 +728,25 @@ function logContactSilent(listingId, channel) {
     method: 'POST',
     headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
     body: `channel=${channel}`
+  }).then(r => r.json()).then(data => {
+    if (data.ok) {
+      const row = document.querySelector(`tr[data-id="${listingId}"]`);
+      if (row) {
+        row.dataset.status = data.lead_status;
+        row.dataset.followup = data.follow_up_date || '';
+        const pill = row.querySelector('.status-pill');
+        if (pill && data.lead_status === 'following_up') {
+          pill.className = 'status-pill status-pill-following_up';
+          pill.innerHTML = '🔄 Following Up <span style="font-size:9px;opacity:0.6;margin-left:2px;">▼</span>';
+        }
+        const cell = row.querySelector('.followup-cell');
+        if (cell && data.follow_up_date) {
+          const d = new Date(data.follow_up_date + 'T00:00:00');
+          cell.classList.add('followup-set');
+          cell.innerHTML = `<span style="font-size:10px;">📅</span> ${d.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;
+        }
+      }
+    }
   }).catch(() => {});
 }
 

@@ -47,6 +47,14 @@ A premium Django lead-generation platform that scrapes business data from Google
 - **Lead Scoring** — scores 0–100 based on data completeness + recency
 - Industry detection for 20+ categories (dental, legal, medical, restaurant, etc.)
 
+### Authentication & Outreach Lifecycle
+- The application requires Django authentication; unauthenticated visitors are sent to `/login/`.
+- The initial administrator account is `SA` with the name Shahid Ahmed. Use Django admin to manage accounts.
+- Successful campaign emails and manual Gmail, WhatsApp, Telegram, and call contacts move a lead to Following Up.
+- Email follow-ups are scheduled automatically for the next day, then 7 days, then 14 days based on prior campaign email contacts.
+- The dashboard notification bell includes overdue, due-today, 1-day, 7-day, and 14-day outreach reminders.
+- The brand is displayed as `LeadManager4U.ai`.
+
 ## Architecture
 
 - **Backend**: Django 6.x, SQLite (WAL mode)

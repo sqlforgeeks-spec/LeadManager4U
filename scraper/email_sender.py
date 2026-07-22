@@ -36,7 +36,7 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
     """
     # Import here to avoid circular imports
     from django.db import close_old_connections
-    from .models import EmailCampaign, EmailSend
+    from .models import EmailCampaign, EmailSend, ContactAttempt
 
     close_old_connections()
 
@@ -142,6 +142,20 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
                 send.status = "sent"
                 send.sent_at = timezone.now()
                 send.save(update_fields=["status", "sent_at"])
+                # Every successful campaign email is a contact and schedules
+                # the next touch: +1 day, then +7 days, then +14 days.
+                prior_email_contacts = ContactAttempt.objects.filter(
+                    listing=listing, channel="email"
+                ).count()
+                ContactAttempt.objects.create(
+                    listing=listing, channel="email", campaign=campaign
+                )
+                if listing.lead_status not in ("converted", "stopped"):
+                    from datetime import timedelta
+                    interval = 1 if prior_email_contacts == 0 else (7 if prior_email_contacts == 1 else 14)
+                    listing.lead_status = "following_up"
+                    listing.follow_up_date = timezone.localdate() + timedelta(days=interval)
+                    listing.save(update_fields=["lead_status", "follow_up_date"])
                 sent += 1
 
                 if sent % 10 == 0:

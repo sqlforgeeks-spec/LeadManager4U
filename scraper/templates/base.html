@@ -14,10 +14,10 @@
 <aside class="sidebar">
   <div class="sidebar-logo">
     <a href="{% url 'home' %}">
-      <div class="logo-icon">🎯</div>
+      <div class="logo-icon">LM</div>
       <div>
-        <span class="logo-text">LeadManager4U</span>
-        <span class="logo-sub">Lead Generation Platform</span>
+        <span class="logo-text">LeadManager4U<span style="color:#60a5fa">.ai</span></span>
+        <span class="logo-sub">Lead intelligence & outreach</span>
       </div>
     </a>
   </div>
@@ -130,6 +130,10 @@
   {% endif %}
 
   <div class="sidebar-footer">
+    {% if request.user.is_authenticated %}
+      <div class="sidebar-user">{{ request.user.first_name }} {{ request.user.last_name }}</div>
+      <a class="sidebar-logout" href="{% url 'logout' %}">Sign out</a>
+    {% endif %}
     <div class="version">LeadManager4U v2.2</div>
   </div>
 </aside>

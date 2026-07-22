@@ -14,6 +14,7 @@ urlpatterns = [
 
     # Leads
     path('leads/', views.leads, name='leads'),
+    path('leads/<int:listing_id>/delete/', views.delete_lead, name='delete_lead'),
     path('results/', views.results, name='results'),  # legacy redirect
 
     # Email campaigns
@@ -21,7 +22,17 @@ urlpatterns = [
     path('campaigns/new/', views.new_campaign, name='new_campaign'),
     path('campaigns/<int:campaign_id>/', views.campaign_detail, name='campaign_detail'),
     path('campaigns/<int:campaign_id>/send/', views.send_campaign_view, name='send_campaign'),
+    path('campaigns/<int:campaign_id>/stop/', views.stop_campaign_view, name='stop_campaign'),
+    path('campaigns/<int:campaign_id>/resend/', views.resend_campaign, name='resend_campaign'),
+    path('campaigns/<int:campaign_id>/schedule/', views.schedule_campaign, name='schedule_campaign'),
+    path('campaigns/<int:campaign_id>/unschedule/', views.unschedule_campaign, name='unschedule_campaign'),
     path('campaigns/<int:campaign_id>/delete/', views.delete_campaign, name='delete_campaign'),
+
+    # SMTP Profiles
+    path('smtp/', views.smtp_profiles, name='smtp_profiles'),
+    path('smtp/create/', views.create_smtp_profile, name='create_smtp_profile'),
+    path('smtp/<int:profile_id>/delete/', views.delete_smtp_profile, name='delete_smtp_profile'),
+    path('api/smtp/<int:profile_id>/', views.api_smtp_profile, name='api_smtp_profile'),
 
     # Downloads – all leads
     path('download/', views.download_csv, name='download_csv'),
@@ -43,7 +54,4 @@ urlpatterns = [
     path('jobs/<int:job_id>/resume/', views.resume_job, name='resume_job'),
     path('jobs/<int:job_id>/stop/', views.stop_job, name='stop_job'),
     path('jobs/<int:job_id>/delete/', views.delete_job, name='delete_job'),
-
-    # Lead deletion
-    path('leads/<int:listing_id>/delete/', views.delete_lead, name='delete_lead'),
 ]

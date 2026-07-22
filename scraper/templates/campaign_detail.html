@@ -5,15 +5,21 @@
 
 {% block topbar_actions %}
   <a href="{% url 'campaigns' %}" class="btn btn-secondary btn-sm">← Campaigns</a>
-  {% if campaign.status == "draft" or campaign.status == "failed" %}
+  {% if campaign.status == "draft" or campaign.status == "failed" or campaign.status == "stopped" %}
     <form method="post" action="{% url 'send_campaign' campaign.id %}">
       {% csrf_token %}
-      <button type="submit" class="btn btn-success btn-sm">▶ Send Campaign</button>
+      <button type="submit" class="btn btn-success btn-sm">▶ Send Now</button>
+    </form>
+  {% endif %}
+  {% if campaign.status == "sending" %}
+    <form method="post" action="{% url 'stop_campaign' campaign.id %}">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-danger btn-sm">⏹ Stop</button>
     </form>
   {% endif %}
   <form method="post" action="{% url 'delete_campaign' campaign.id %}" onsubmit="return confirm('Delete this campaign permanently?')">
     {% csrf_token %}
-    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+    <button type="submit" class="btn btn-danger btn-sm">🗑 Delete</button>
   </form>
 {% endblock %}
 
@@ -23,6 +29,9 @@
 <div class="flex items-center gap-12 mb-24" style="flex-wrap:wrap;">
   <span class="badge badge-{{ campaign.status }}" style="font-size:13px; padding:6px 14px;">{{ campaign.get_status_display }}</span>
   {% if campaign.status == "sending" %}<span class="badge badge-live">Sending…</span>{% endif %}
+  {% if campaign.status == "scheduled" and campaign.scheduled_at %}
+    <span class="badge badge-queued">⏰ Scheduled: {{ campaign.scheduled_at|date:"M j, Y H:i" }}</span>
+  {% endif %}
 </div>
 
 <div class="stats-grid mb-24">
@@ -55,6 +64,57 @@
 </div>
 {% endif %}
 
+<!-- Resend + Schedule actions -->
+{% if campaign.status in "draft,failed,stopped,sent" %}
+<div class="card mb-24">
+  <div class="card-header"><div class="card-title">⚡ Actions</div></div>
+  <div class="card-body">
+    <div class="flex gap-12" style="flex-wrap:wrap; align-items:flex-start;">
+
+      <!-- Resend -->
+      <div>
+        <div class="form-label mb-4">Resend Emails</div>
+        <div class="flex gap-8">
+          <form method="post" action="{% url 'resend_campaign' campaign.id %}">
+            {% csrf_token %}
+            <input type="hidden" name="resend_mode" value="failed">
+            <button type="submit" class="btn btn-secondary btn-sm">↻ Resend Failed</button>
+          </form>
+          <form method="post" action="{% url 'resend_campaign' campaign.id %}" onsubmit="return confirm('This will reset ALL sends and resend to every recipient. Continue?')">
+            {% csrf_token %}
+            <input type="hidden" name="resend_mode" value="all">
+            <button type="submit" class="btn btn-ghost btn-sm">↻ Resend All</button>
+          </form>
+        </div>
+        <div class="form-hint">Resend failed resets failed/skipped; Resend all resets every recipient.</div>
+      </div>
+
+      <!-- Schedule -->
+      {% if campaign.status != "scheduled" %}
+      <div>
+        <div class="form-label mb-4">Schedule Send</div>
+        <form method="post" action="{% url 'schedule_campaign' campaign.id %}" class="flex gap-8" style="align-items:center;">
+          {% csrf_token %}
+          <input type="datetime-local" name="scheduled_at" class="form-input" style="max-width:220px;" required>
+          <button type="submit" class="btn btn-primary btn-sm">⏰ Schedule</button>
+        </form>
+        <div class="form-hint">Campaign will send automatically at the chosen time.</div>
+      </div>
+      {% else %}
+      <div>
+        <div class="form-label mb-4">Scheduled Send</div>
+        <div class="flex gap-8 items-center">
+          <span class="text-muted">{{ campaign.scheduled_at|date:"M j, Y H:i" }}</span>
+          <form method="post" action="{% url 'unschedule_campaign' campaign.id %}">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">Cancel Schedule</button></form>
+        </div>
+      </div>
+      {% endif %}
+
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <!-- Campaign info -->
 <div class="card mb-24">
   <div class="card-header"><div class="card-title">Campaign Details</div></div>
@@ -63,7 +123,7 @@
       <div class="meta-item"><div class="meta-label">From</div><div class="meta-value">{{ campaign.from_name|default:"" }} &lt;{{ campaign.from_email }}&gt;</div></div>
       <div class="meta-item"><div class="meta-label">Reply-To</div><div class="meta-value">{{ campaign.reply_to|default:"—" }}</div></div>
       <div class="meta-item"><div class="meta-label">SMTP</div><div class="meta-value font-mono" style="font-size:12px;">{{ campaign.smtp_host }}:{{ campaign.smtp_port }}</div></div>
-      <div class="meta-item"><div class="meta-label">Job Filter</div><div class="meta-value">{% if campaign.job_filter %}Job #{{ campaign.job_filter.id }} — {{ campaign.job_filter.search_phrase }}{% else %}All leads{% endif %}</div></div>
+      <div class="meta-item"><div class="meta-label">Job Filter</div><div class="meta-value">{% if campaign.job_filter %}<a href="{% if campaign.job_filter.source == 'maps' %}{% url 'job_detail' campaign.job_filter.id %}{% else %}{% url 'search_job_detail' campaign.job_filter.id %}{% endif %}" class="text-primary">Job #{{ campaign.job_filter.id }} — {{ campaign.job_filter.search_phrase }}</a>{% else %}All leads{% endif %}</div></div>
       <div class="meta-item"><div class="meta-label">Created</div><div class="meta-value">{{ campaign.created_at|date:"Y-m-d H:i" }}</div></div>
     </div>
     <div class="mt-16">
@@ -80,13 +140,16 @@
 <!-- Recipients -->
 <div class="section-header">
   <div class="section-title">Recipients</div>
-  <span class="text-muted" style="font-size:13px;">{{ sends|length }} shown</span>
+  <div class="flex gap-8 items-center">
+    <span class="text-muted" style="font-size:13px;">{{ sends|length }} shown</span>
+    <input type="text" class="form-input" style="max-width:200px;" placeholder="Filter…" oninput="filterTable('sends-table', this.value)">
+  </div>
 </div>
 
 {% if sends %}
 <div class="card">
   <div class="table-wrap">
-    <table class="table">
+    <table class="table" id="sends-table">
       <thead>
         <tr><th>Business</th><th>Email</th><th>Phone</th><th>Location</th><th>Status</th><th>Sent At</th><th>Error</th></tr>
       </thead>
@@ -116,7 +179,7 @@
   <div class="empty-state">
     <div class="empty-icon">📭</div>
     <div class="empty-title">No recipients yet</div>
-    <div class="empty-desc">This campaign has no leads to send to with email addresses.</div>
+    <div class="empty-desc">This campaign has no leads with email addresses.</div>
   </div>
 </div>
 {% endif %}
@@ -126,7 +189,6 @@
 {% block scripts %}
 {% if campaign.status == "sending" %}
 <script>
-  // Auto-refresh while sending
   setTimeout(() => window.location.reload(), 8000);
 </script>
 {% endif %}

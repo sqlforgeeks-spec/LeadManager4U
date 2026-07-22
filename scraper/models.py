@@ -1,6 +1,22 @@
 from django.db import models
 
 
+class SmtpProfile(models.Model):
+    name = models.CharField(max_length=255, help_text="Friendly name, e.g. Gmail – john@company.com")
+    host = models.CharField(max_length=255, default="smtp.gmail.com")
+    port = models.PositiveIntegerField(default=587)
+    user = models.CharField(max_length=255)
+    password = models.CharField(max_length=500)
+    use_tls = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
 class ScrapeJob(models.Model):
     STATUS_CHOICES = [
         ("queued", "Queued"),
@@ -24,13 +40,26 @@ class ScrapeJob(models.Model):
         ("yahoo", "Yahoo"),
         ("duckduckgo", "DuckDuckGo"),
         ("yandex", "Yandex"),
+        ("ecosia", "Ecosia"),
+        ("ask", "Ask.com"),
+    ]
+
+    SEARCH_TYPE_CHOICES = [
+        ("web", "Web Pages"),
+        ("images", "Images"),
+        ("videos", "Videos"),
+        ("news", "News"),
     ]
 
     status = models.CharField(max_length=32, choices=STATUS_CHOICES, default="queued")
     source = models.CharField(max_length=32, choices=SOURCE_CHOICES, default="maps")
     search_phrase = models.CharField(max_length=255)
-    domain = models.CharField(max_length=32, default="com")
+    domain = models.CharField(max_length=32, default="com", blank=True)
     locations = models.TextField(blank=True)
+    country = models.CharField(max_length=8, blank=True, default="",
+                               help_text="Country code e.g. us, uk, in, au (for search engines)")
+    search_type = models.CharField(max_length=16, choices=SEARCH_TYPE_CHOICES, default="web",
+                                   help_text="Search type for Google (web, images, videos, news)")
     max_results = models.PositiveIntegerField(default=1000)
     total_results = models.PositiveIntegerField(default=0)
     collected_listings = models.PositiveIntegerField(default=0)
@@ -40,6 +69,8 @@ class ScrapeJob(models.Model):
     processed_locations = models.PositiveIntegerField(default=0)
     last_error = models.TextField(blank=True)
     speed = models.CharField(max_length=16, choices=SPEED_CHOICES, default="normal")
+    auto_campaign_created = models.BooleanField(default=False,
+                                                help_text="Whether an email campaign was auto-created for this job")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -54,6 +85,8 @@ class ScrapeJob(models.Model):
             "yahoo": "Y!",
             "duckduckgo": "🦆",
             "yandex": "Я",
+            "ecosia": "🌿",
+            "ask": "❓",
         }
         return icons.get(self.source, "🔍")
 
@@ -97,9 +130,11 @@ class BusinessListing(models.Model):
 class EmailCampaign(models.Model):
     STATUS_CHOICES = [
         ("draft", "Draft"),
+        ("scheduled", "Scheduled"),
         ("sending", "Sending"),
         ("sent", "Sent"),
         ("failed", "Failed"),
+        ("stopped", "Stopped"),
     ]
 
     name = models.CharField(max_length=255)
@@ -119,8 +154,11 @@ class EmailCampaign(models.Model):
     total_skipped = models.PositiveIntegerField(default=0)
     job_filter = models.ForeignKey(
         ScrapeJob, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="campaigns",
         help_text="If set, only send to leads from this job."
     )
+    scheduled_at = models.DateTimeField(null=True, blank=True,
+                                        help_text="If set, campaign will be sent automatically at this time.")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

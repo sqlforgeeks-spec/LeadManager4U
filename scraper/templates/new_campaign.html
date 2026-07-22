@@ -5,12 +5,13 @@
 
 {% block topbar_actions %}
   <a href="{% url 'campaigns' %}" class="btn btn-secondary btn-sm">← Campaigns</a>
+  <a href="{% url 'smtp_profiles' %}" class="btn btn-ghost btn-sm">🔑 Manage SMTP Profiles</a>
 {% endblock %}
 
 {% block content %}
 
 <div class="alert alert-info mb-24">
-  <strong>📧 Email personalisation:</strong> Use <code>{name}</code>, <code>{email}</code>, <code>{phone}</code>, <code>{website}</code>, <code>{location}</code> as placeholders in subject and body. They will be replaced per recipient.
+  <strong>📧 Personalisation:</strong> Use <code>{name}</code>, <code>{email}</code>, <code>{phone}</code>, <code>{website}</code>, <code>{location}</code> in subject and body — replaced per recipient.
 </div>
 
 <form method="post" action="{% url 'new_campaign' %}">
@@ -29,35 +30,50 @@
           <input type="text" name="subject" class="form-input" placeholder="Hi {name}, I found your business…" required>
         </div>
         <div class="form-group full">
-          <label class="form-label">Lead Source (optional — filter by job)</label>
-          <select name="job_filter" class="form-select">
+          <label class="form-label">Lead Source — filter by job (optional)</label>
+          <select name="job_filter" class="form-select" id="job-filter-sel">
             <option value="">All leads with email</option>
             {% for job in jobs %}
-              <option value="{{ job.id }}">#{{ job.id }} — {{ job.search_phrase }} ({{ job.collected_listings }} leads)</option>
+              <option value="{{ job.id }}" {% if prefill_job_id == job.id|stringformat:"s" %}selected{% endif %}>#{{ job.id }} — {{ job.search_phrase }} ({{ job.collected_listings }} leads, {{ job.get_source_display }})</option>
             {% endfor %}
           </select>
-          <div class="form-hint">If selected, only sends to leads from that job. If blank, sends to ALL leads that have an email address.</div>
+          <div class="form-hint">If blank, sends to ALL leads with an email address.</div>
         </div>
         <div class="form-group full">
           <label class="form-label">Email Body *</label>
           <textarea name="body" class="form-textarea" rows="10" placeholder="Hi {name},&#10;&#10;I came across your business and wanted to reach out…&#10;&#10;Best regards" required></textarea>
-          <div class="form-hint">Placeholders: {name} {email} {phone} {website} {location}</div>
+          <div class="form-hint">Placeholders: {name} {email} {phone} {website} {location} {address}</div>
         </div>
       </div>
     </div>
   </div>
 
   <div class="card mb-24">
-    <div class="card-header"><div class="card-title">Sender & SMTP Settings</div></div>
+    <div class="card-header">
+      <div class="card-title">Sender &amp; SMTP Settings</div>
+      {% if smtp_profiles %}
+      <div style="display:flex; align-items:center; gap:10px;">
+        <label class="form-label" style="margin:0; white-space:nowrap;">Load from profile:</label>
+        <select id="smtp-profile-picker" class="form-select" style="min-width:200px;">
+          <option value="">— select saved profile —</option>
+          {% for p in smtp_profiles %}
+            <option value="{{ p.id }}" data-host="{{ p.host }}" data-port="{{ p.port }}" data-user="{{ p.user }}" data-tls="{{ p.use_tls|yesno:'true,false' }}">{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% else %}
+      <a href="{% url 'smtp_profiles' %}" class="btn btn-ghost btn-sm">+ Save SMTP Profile</a>
+      {% endif %}
+    </div>
     <div class="card-body">
       <div class="form-grid">
         <div class="form-group">
           <label class="form-label">From Name</label>
-          <input type="text" name="from_name" class="form-input" placeholder="John Smith">
+          <input type="text" name="from_name" class="form-input" placeholder="John Smith" id="from-name">
         </div>
         <div class="form-group">
           <label class="form-label">From Email *</label>
-          <input type="email" name="from_email" class="form-input" placeholder="john@example.com" required>
+          <input type="email" name="from_email" class="form-input" placeholder="john@example.com" required id="from-email">
         </div>
         <div class="form-group">
           <label class="form-label">Reply-To (optional)</label>
@@ -65,24 +81,24 @@
         </div>
         <div class="form-group">
           <label class="form-label">SMTP Host</label>
-          <input type="text" name="smtp_host" class="form-input" value="smtp.gmail.com">
+          <input type="text" name="smtp_host" class="form-input" value="smtp.gmail.com" id="smtp-host">
         </div>
         <div class="form-group">
           <label class="form-label">SMTP Port</label>
-          <input type="number" name="smtp_port" class="form-input" value="587">
+          <input type="number" name="smtp_port" class="form-input" value="587" id="smtp-port">
         </div>
         <div class="form-group">
           <label class="form-label">SMTP Username</label>
-          <input type="text" name="smtp_user" class="form-input" placeholder="your@gmail.com" autocomplete="off">
+          <input type="text" name="smtp_user" class="form-input" placeholder="your@gmail.com" autocomplete="off" id="smtp-user">
         </div>
         <div class="form-group">
           <label class="form-label">SMTP Password / App Password</label>
           <input type="password" name="smtp_password" class="form-input" placeholder="••••••••••••" autocomplete="new-password">
-          <div class="form-hint">For Gmail: use an App Password (not your account password).</div>
+          <div class="form-hint">For Gmail: use an App Password (Settings → Security → App Passwords).</div>
         </div>
         <div class="form-group">
           <label class="form-check">
-            <input type="checkbox" name="use_tls" value="on" checked>
+            <input type="checkbox" name="use_tls" value="on" checked id="smtp-tls">
             Use TLS (STARTTLS on port 587)
           </label>
         </div>
@@ -96,4 +112,40 @@
   </div>
 </form>
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto-fill SMTP fields from profile picker
+const picker = document.getElementById('smtp-profile-picker');
+if (picker) {
+  picker.addEventListener('change', () => {
+    const opt = picker.options[picker.selectedIndex];
+    if (!opt.value) return;
+    const host = opt.dataset.host;
+    const port = opt.dataset.port;
+    const user = opt.dataset.user;
+    const tls = opt.dataset.tls === 'true';
+    document.getElementById('smtp-host').value = host || '';
+    document.getElementById('smtp-port').value = port || '587';
+    document.getElementById('smtp-user').value = user || '';
+    document.getElementById('smtp-tls').checked = tls;
+    // Also fill from_email if empty
+    const fromEmail = document.getElementById('from-email');
+    if (!fromEmail.value && user) fromEmail.value = user;
+  });
+}
+
+// Pre-select job if passed from URL
+const params = new URLSearchParams(window.location.search);
+const jobId = params.get('job_id');
+if (jobId) {
+  const sel = document.getElementById('job-filter-sel');
+  if (sel) {
+    [...sel.options].forEach(opt => {
+      if (opt.value === jobId) opt.selected = true;
+    });
+  }
+}
+</script>
 {% endblock %}

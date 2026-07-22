@@ -7,7 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 
-from .models import BusinessListing, ScrapeJob, JobLog, EmailCampaign, EmailSend
+from .models import BusinessListing, ScrapeJob, JobLog, EmailCampaign, EmailSend, SmtpProfile
 from .scraper import scrape_google_maps, StopScrape, create_shared_drivers
 from .search_scraper import scrape_search_engine, StopScrape as SearchStopScrape
 from .email_sender import launch_campaign
@@ -20,6 +20,45 @@ import pandas as pd
 MAX_RESULTS_CAP = 5000
 ACTIVE_JOBS = set()
 ACTIVE_JOBS_LOCK = threading.Lock()
+ACTIVE_CAMPAIGNS = set()
+ACTIVE_CAMPAIGNS_LOCK = threading.Lock()
+
+# ─── Scheduler thread (for scheduled campaigns) ───────────────────────────────
+_scheduler_started = False
+_scheduler_lock = threading.Lock()
+
+
+def _start_scheduler():
+    global _scheduler_started
+    with _scheduler_lock:
+        if _scheduler_started:
+            return
+        _scheduler_started = True
+    t = threading.Thread(target=_scheduler_loop, daemon=True)
+    t.start()
+
+
+def _scheduler_loop():
+    """Background thread: checks every 60s for campaigns ready to send."""
+    time.sleep(10)  # Small startup delay
+    while True:
+        try:
+            close_old_connections()
+            now = timezone.now()
+            ready = EmailCampaign.objects.filter(
+                status="scheduled",
+                scheduled_at__lte=now,
+            ).exclude(id__in=list(ACTIVE_CAMPAIGNS))
+            for campaign in ready:
+                campaign.status = "draft"
+                campaign.save(update_fields=["status"])
+                launch_campaign(campaign.id)
+        except Exception:
+            pass
+        time.sleep(60)
+
+
+_start_scheduler()
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -69,7 +108,64 @@ def _global_stats():
         "leads_with_phone": BusinessListing.objects.exclude(phone="").count(),
         "active_jobs": ScrapeJob.objects.filter(status__in=["queued", "running"]).count(),
         "campaigns": EmailCampaign.objects.count(),
+        "smtp_profiles": SmtpProfile.objects.count(),
     }
+
+
+def _ai_tips(stats):
+    """Generate contextual smart tips based on current data."""
+    tips = []
+    total_leads = stats["total_leads"]
+    emails = stats["leads_with_email"]
+    active = stats["active_jobs"]
+
+    if total_leads == 0:
+        tips.append({
+            "icon": "🚀",
+            "type": "info",
+            "text": "Start by running a Google Maps scrape or Search Engine scrape to collect your first leads.",
+        })
+    elif total_leads > 0 and emails == 0:
+        tips.append({
+            "icon": "📧",
+            "type": "warning",
+            "text": f"You have {total_leads:,} leads but no emails yet. Run a Search Engine scrape to find contact emails.",
+        })
+    elif total_leads > 0 and emails < total_leads * 0.1:
+        pct = int(emails * 100 / total_leads) if total_leads else 0
+        tips.append({
+            "icon": "📬",
+            "type": "warning",
+            "text": f"Only {pct}% of your leads have emails. Try Search Engine scraping to boost email coverage.",
+        })
+
+    completed_no_campaign = ScrapeJob.objects.filter(
+        status__in=["completed", "completed_with_errors"],
+        auto_campaign_created=False,
+    ).exclude(listings__isnull=True).first()
+    if completed_no_campaign and emails > 0:
+        tips.append({
+            "icon": "✉️",
+            "type": "success",
+            "text": f"Job #{completed_no_campaign.id} is done — an email campaign draft was auto-created for you. Check Campaigns!",
+        })
+
+    scheduled = EmailCampaign.objects.filter(status="scheduled").count()
+    if scheduled:
+        tips.append({
+            "icon": "⏰",
+            "type": "info",
+            "text": f"{scheduled} campaign{'s' if scheduled > 1 else ''} scheduled and will send automatically.",
+        })
+
+    if active > 2:
+        tips.append({
+            "icon": "⚡",
+            "type": "warning",
+            "text": f"{active} jobs running simultaneously. Consider pausing some to avoid rate limits.",
+        })
+
+    return tips[:3]  # Max 3 tips
 
 
 # ─── Dashboard ───────────────────────────────────────────────────────────────
@@ -87,12 +183,14 @@ def home(request):
         "paused": ScrapeJob.objects.filter(status="paused").count(),
         "completed": ScrapeJob.objects.filter(status__in=["completed", "completed_with_errors"]).count(),
     }
+    stats = _global_stats()
     return render(request, "home.html", {
         "domains": DOMAINS,
         "recent_jobs": recent_jobs,
         "refresh_home": refresh_home,
         "job_stats": job_stats,
-        "global_stats": _global_stats(),
+        "global_stats": stats,
+        "ai_tips": _ai_tips(stats),
         "active_page": "dashboard",
     })
 
@@ -102,6 +200,7 @@ def _start_maps_job(request):
     locations_raw = request.POST.get("locations", "")
     domain = request.POST.get("domain", "com").strip()
     speed = request.POST.get("speed", "normal").strip()
+    auto_campaign = request.POST.get("auto_campaign", "") == "1"
     try:
         max_results = min(MAX_RESULTS_CAP, max(1, int(request.POST.get("max_results", "1000"))))
     except ValueError:
@@ -120,13 +219,17 @@ def _start_maps_job(request):
         total_locations=len(locations),
         speed=speed,
     )
-    threading.Thread(target=run_scrape, args=(job.id, search_phrase, locations, domain, max_results), daemon=True).start()
+    threading.Thread(
+        target=run_scrape,
+        args=(job.id, search_phrase, locations, domain, max_results, auto_campaign),
+        daemon=True,
+    ).start()
     return redirect("job_detail", job_id=job.id)
 
 
 # ─── Maps Scraping ───────────────────────────────────────────────────────────
 
-def run_scrape(job_id, search_phrase, locations, domain, max_results):
+def run_scrape(job_id, search_phrase, locations, domain, max_results, auto_campaign=True):
     _set_job_active(job_id, True)
     close_old_connections()
     try:
@@ -325,6 +428,11 @@ def run_scrape(job_id, search_phrase, locations, domain, max_results):
         job.status = "failed" if (total_results == 0 and had_errors) else ("completed_with_errors" if had_errors else "completed")
         job.save(update_fields=["status", "updated_at"])
         _log(job, f"Job {job.status.replace('_', ' ')}.")
+
+        # Auto-create email campaign draft if job has leads with emails
+        if job.status in {"completed", "completed_with_errors"} and auto_campaign:
+            _auto_create_campaign(job)
+
     except Exception as exc:
         job.status = "failed"
         job.last_error = str(exc)
@@ -346,10 +454,52 @@ def run_scrape(job_id, search_phrase, locations, domain, max_results):
         _set_job_active(job_id, False)
 
 
+def _auto_create_campaign(job):
+    """Auto-create a draft email campaign when a scrape job completes."""
+    try:
+        close_old_connections()
+        leads_with_email = BusinessListing.objects.filter(job=job).exclude(email="").count()
+        if leads_with_email == 0:
+            return
+        if EmailCampaign.objects.filter(job_filter=job).exists():
+            return  # Already has a campaign
+
+        campaign = EmailCampaign.objects.create(
+            name=f"Campaign — {job.search_phrase} (auto)",
+            subject=f"Hi {{name}}, reaching out about your business",
+            body=(
+                "Hi {name},\n\n"
+                "I came across your business and wanted to reach out.\n\n"
+                "Would you be open to a quick chat?\n\n"
+                "Best regards"
+            ),
+            from_name="",
+            from_email="your@email.com",
+            smtp_host="smtp.gmail.com",
+            smtp_port=587,
+            smtp_user="",
+            smtp_password="",
+            use_tls=True,
+            status="draft",
+            job_filter=job,
+        )
+        # Pre-populate sends
+        for listing in BusinessListing.objects.filter(job=job).exclude(email=""):
+            EmailSend.objects.get_or_create(campaign=campaign, listing=listing)
+
+        job.auto_campaign_created = True
+        job.save(update_fields=["auto_campaign_created"])
+        _log(job, f"Auto-created email campaign draft (ID {campaign.id}) for {leads_with_email} leads.")
+    except Exception as exc:
+        try:
+            _log(job, f"Auto-campaign creation failed: {exc}", level="WARN")
+        except Exception:
+            pass
+
+
 # ─── Search Engine Scraping ───────────────────────────────────────────────────
 
 def search_home(request):
-    """Page for search-engine scraping jobs."""
     if request.method == "POST":
         return _start_search_job(request)
 
@@ -366,10 +516,16 @@ def _start_search_job(request):
     location = request.POST.get("location", "").strip()
     engine = request.POST.get("engine", "google").strip()
     speed = request.POST.get("speed", "normal").strip()
-    if engine not in {"google", "bing", "yahoo", "duckduckgo", "yandex"}:
+    country = request.POST.get("country", "").strip().lower()
+    search_type = request.POST.get("search_type", "web").strip()
+    visit_pages = request.POST.get("visit_pages", "1") == "1"
+
+    if engine not in {"google", "bing", "yahoo", "duckduckgo", "yandex", "ecosia", "ask"}:
         engine = "google"
     if speed not in {"slow", "normal", "fast"}:
         speed = "normal"
+    if search_type not in {"web", "images", "videos", "news"}:
+        search_type = "web"
     try:
         max_results = min(500, max(1, int(request.POST.get("max_results", "100"))))
     except ValueError:
@@ -380,15 +536,17 @@ def _start_search_job(request):
         source=engine,
         search_phrase=search_phrase,
         locations=location,
+        country=country,
+        search_type=search_type,
         max_results=max_results,
         total_locations=1 if location else 0,
         speed=speed,
     )
-    threading.Thread(target=run_search_scrape, args=(job.id,), daemon=True).start()
+    threading.Thread(target=run_search_scrape, args=(job.id, visit_pages), daemon=True).start()
     return redirect("search_job_detail", job_id=job.id)
 
 
-def run_search_scrape(job_id):
+def run_search_scrape(job_id, visit_pages=True):
     _set_job_active(job_id, True)
     close_old_connections()
     try:
@@ -403,7 +561,7 @@ def run_search_scrape(job_id):
     try:
         job.status = "running"
         job.save(update_fields=["status", "updated_at"])
-        _log(job, f"Search job started: '{job.search_phrase}' on {job.source} (target {job.max_results})")
+        _log(job, f"Search job started: '{job.search_phrase}' on {job.source} (target {job.max_results}, type={job.search_type}, country={job.country or 'any'})")
 
         last_stop_check = {"time": 0, "stop": False}
         last_pause_check = {"time": 0, "paused": False}
@@ -461,6 +619,9 @@ def run_search_scrape(job_id):
             location=job.locations,
             engine=job.source,
             max_results=job.max_results,
+            country=job.country,
+            search_type=job.search_type,
+            visit_pages=visit_pages,
             log_fn=lambda msg: _log(job, msg),
             should_pause_fn=should_pause,
             should_stop_fn=should_stop,
@@ -573,7 +734,6 @@ def leads(request):
 
 def job_detail(request, job_id):
     job = get_object_or_404(ScrapeJob, id=job_id)
-    # Redirect search engine jobs to their own detail page
     if job.source != "maps":
         return redirect("search_job_detail", job_id=job_id)
     listings = BusinessListing.objects.filter(job=job).order_by("-scraped_at")[:200]
@@ -583,6 +743,7 @@ def job_detail(request, job_id):
     if job.max_results:
         progress = min(100, int(job.collected_listings * 100 / job.max_results))
     is_running = job.status in {"queued", "running"}
+    auto_campaign = job.campaigns.filter(name__icontains="auto").first() if job.auto_campaign_created else None
     return render(request, "job.html", {
         "job": job,
         "listings": listings,
@@ -594,8 +755,54 @@ def job_detail(request, job_id):
         "is_paused": job.status == "paused",
         "domains": DOMAINS,
         "recent_jobs": recent_jobs,
+        "auto_campaign": auto_campaign,
         "global_stats": _global_stats(),
         "active_page": "dashboard",
+    })
+
+
+# ─── SMTP Profiles ────────────────────────────────────────────────────────────
+
+def smtp_profiles(request):
+    profiles = SmtpProfile.objects.all()
+    return render(request, "smtp_profiles.html", {
+        "profiles": profiles,
+        "global_stats": _global_stats(),
+        "active_page": "smtp",
+    })
+
+
+@require_POST
+def create_smtp_profile(request):
+    name = request.POST.get("name", "").strip()
+    host = request.POST.get("host", "smtp.gmail.com").strip()
+    user = request.POST.get("user", "").strip()
+    password = request.POST.get("password", "").strip()
+    use_tls = request.POST.get("use_tls", "on") == "on"
+    try:
+        port = int(request.POST.get("port", "587"))
+    except ValueError:
+        port = 587
+    if name and user:
+        SmtpProfile.objects.create(name=name, host=host, port=port, user=user, password=password, use_tls=use_tls)
+    return redirect("smtp_profiles")
+
+
+@require_POST
+def delete_smtp_profile(request, profile_id):
+    profile = get_object_or_404(SmtpProfile, id=profile_id)
+    profile.delete()
+    return redirect("smtp_profiles")
+
+
+def api_smtp_profile(request, profile_id):
+    """Return SMTP profile fields as JSON (for auto-filling campaign form)."""
+    profile = get_object_or_404(SmtpProfile, id=profile_id)
+    return JsonResponse({
+        "host": profile.host,
+        "port": profile.port,
+        "user": profile.user,
+        "use_tls": profile.use_tls,
     })
 
 
@@ -603,8 +810,10 @@ def job_detail(request, job_id):
 
 def campaigns(request):
     campaign_list = EmailCampaign.objects.order_by("-created_at")
+    smtp_profiles_qs = SmtpProfile.objects.all()
     return render(request, "campaigns.html", {
         "campaigns": campaign_list,
+        "smtp_profiles": smtp_profiles_qs,
         "global_stats": _global_stats(),
         "active_page": "campaigns",
     })
@@ -612,6 +821,9 @@ def campaigns(request):
 
 def new_campaign(request):
     jobs = ScrapeJob.objects.filter(status__in=["completed", "completed_with_errors"]).order_by("-created_at")
+    smtp_profiles_qs = SmtpProfile.objects.all()
+    prefill_job_id = request.GET.get("job_id", "")
+
     if request.method == "POST":
         name = request.POST.get("name", "").strip()
         subject = request.POST.get("subject", "").strip()
@@ -644,7 +856,6 @@ def new_campaign(request):
             job_filter=job_filter,
         )
 
-        # Pre-populate EmailSend records
         qs = BusinessListing.objects.exclude(email="")
         if job_filter:
             qs = qs.filter(job=job_filter)
@@ -655,6 +866,8 @@ def new_campaign(request):
 
     return render(request, "new_campaign.html", {
         "jobs": jobs,
+        "smtp_profiles": smtp_profiles_qs,
+        "prefill_job_id": prefill_job_id,
         "global_stats": _global_stats(),
         "active_page": "campaigns",
     })
@@ -674,13 +887,76 @@ def campaign_detail(request, campaign_id):
 @require_POST
 def send_campaign_view(request, campaign_id):
     campaign = get_object_or_404(EmailCampaign, id=campaign_id)
-    if campaign.status not in {"draft", "failed"}:
+    if campaign.status not in {"draft", "failed", "stopped"}:
+        return redirect("campaign_detail", campaign_id=campaign_id)
+    launch_campaign(campaign.id)
+    return redirect("campaign_detail", campaign_id=campaign_id)
+
+
+@require_POST
+def stop_campaign_view(request, campaign_id):
+    campaign = get_object_or_404(EmailCampaign, id=campaign_id)
+    if campaign.status == "sending":
+        campaign.status = "stopped"
+        campaign.save(update_fields=["status", "updated_at"])
+    return redirect("campaign_detail", campaign_id=campaign_id)
+
+
+@require_POST
+def resend_campaign(request, campaign_id):
+    """Reset failed/skipped (or all) sends back to pending and re-launch."""
+    campaign = get_object_or_404(EmailCampaign, id=campaign_id)
+    if campaign.status in {"sending"}:
         return redirect("campaign_detail", campaign_id=campaign_id)
 
-    def log_fn(msg, level="INFO"):
-        pass  # Campaigns don't have JobLog; could extend later
+    resend_mode = request.POST.get("resend_mode", "failed")  # "failed" or "all"
+    if resend_mode == "all":
+        campaign.sends.update(status="pending", error="")
+    else:
+        campaign.sends.filter(status__in=["failed", "skipped"]).update(status="pending", error="")
 
-    launch_campaign(campaign.id, log_fn=log_fn)
+    campaign.status = "draft"
+    campaign.total_sent = 0
+    campaign.total_failed = 0
+    campaign.total_skipped = 0
+    campaign.save(update_fields=["status", "total_sent", "total_failed", "total_skipped", "updated_at"])
+    launch_campaign(campaign.id)
+    return redirect("campaign_detail", campaign_id=campaign_id)
+
+
+@require_POST
+def schedule_campaign(request, campaign_id):
+    """Schedule a campaign to send at a specific datetime."""
+    campaign = get_object_or_404(EmailCampaign, id=campaign_id)
+    from django.utils.dateparse import parse_datetime
+    scheduled_str = request.POST.get("scheduled_at", "").strip()
+    if scheduled_str:
+        try:
+            # Accept datetime-local format: "2025-07-22T14:30"
+            from datetime import datetime
+            import pytz
+            dt = datetime.strptime(scheduled_str, "%Y-%m-%dT%H:%M")
+            # Make timezone aware (use server timezone)
+            try:
+                from django.conf import settings as djsettings
+                tz = pytz.timezone(djsettings.TIME_ZONE)
+                dt = tz.localize(dt)
+            except Exception:
+                dt = timezone.make_aware(dt)
+            campaign.scheduled_at = dt
+            campaign.status = "scheduled"
+            campaign.save(update_fields=["scheduled_at", "status", "updated_at"])
+        except Exception:
+            pass
+    return redirect("campaign_detail", campaign_id=campaign_id)
+
+
+@require_POST
+def unschedule_campaign(request, campaign_id):
+    campaign = get_object_or_404(EmailCampaign, id=campaign_id)
+    campaign.scheduled_at = None
+    campaign.status = "draft"
+    campaign.save(update_fields=["scheduled_at", "status", "updated_at"])
     return redirect("campaign_detail", campaign_id=campaign_id)
 
 
@@ -691,18 +967,18 @@ def delete_campaign(request, campaign_id):
     return redirect("campaigns")
 
 
+# ─── Job deletion ─────────────────────────────────────────────────────────────
+
 @require_POST
 def delete_job(request, job_id):
     job = get_object_or_404(ScrapeJob, id=job_id)
-    # Prevent deleting actively running jobs
     if job.status in {"queued", "running"}:
         return _redirect_back(request, reverse("home"))
+    source = job.source
     job.delete()
-    # Redirect based on source
-    referer = request.META.get("HTTP_REFERER", "")
-    if "search" in referer:
-        return redirect("search_home")
-    return redirect("home")
+    if source == "maps":
+        return redirect("home")
+    return redirect("search_home")
 
 
 @require_POST

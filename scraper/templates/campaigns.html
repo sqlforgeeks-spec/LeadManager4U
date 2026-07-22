@@ -4,6 +4,7 @@
 {% block topbar_title %}Email Campaigns{% endblock %}
 
 {% block topbar_actions %}
+  <a href="{% url 'smtp_profiles' %}" class="btn btn-secondary btn-sm">🔑 SMTP Profiles</a>
   <a href="{% url 'new_campaign' %}" class="btn btn-primary btn-sm">+ New Campaign</a>
 {% endblock %}
 
@@ -11,10 +12,14 @@
 
 {% if campaigns %}
 <div class="card">
+  <div class="card-header">
+    <div class="card-title">All Campaigns</div>
+    <input type="text" class="form-input" style="max-width:220px;" placeholder="Filter…" oninput="filterTable('campaigns-table', this.value)">
+  </div>
   <div class="table-wrap">
-    <table class="table">
+    <table class="table" id="campaigns-table">
       <thead>
-        <tr><th>#</th><th>Name</th><th>Status</th><th>Subject</th><th>Targets</th><th>Sent</th><th>Failed</th><th>Actions</th></tr>
+        <tr><th>#</th><th>Name</th><th>Status</th><th>Subject</th><th>Targets</th><th>Sent</th><th>Failed</th><th>Scheduled</th><th>Actions</th></tr>
       </thead>
       <tbody>
         {% for campaign in campaigns %}
@@ -22,22 +27,29 @@
           <td class="text-muted font-mono">#{{ campaign.id }}</td>
           <td><strong>{{ campaign.name }}</strong></td>
           <td><span class="badge badge-{{ campaign.status }}">{{ campaign.get_status_display }}</span></td>
-          <td><span class="truncate" title="{{ campaign.subject }}" style="max-width:220px;">{{ campaign.subject }}</span></td>
+          <td><span class="truncate" title="{{ campaign.subject }}" style="max-width:200px;">{{ campaign.subject }}</span></td>
           <td>{{ campaign.total_targets }}</td>
           <td class="text-success">{{ campaign.total_sent }}</td>
           <td class="text-danger">{{ campaign.total_failed }}</td>
+          <td class="text-muted" style="font-size:12px;">{% if campaign.scheduled_at %}⏰ {{ campaign.scheduled_at|date:"M j H:i" }}{% else %}—{% endif %}</td>
           <td class="no-row-click">
             <div class="action-group">
               <a href="{% url 'campaign_detail' campaign.id %}" class="btn btn-secondary btn-sm">View</a>
-              {% if campaign.status == "draft" or campaign.status == "failed" %}
+              {% if campaign.status == "draft" or campaign.status == "failed" or campaign.status == "stopped" %}
                 <form method="post" action="{% url 'send_campaign' campaign.id %}">
                   {% csrf_token %}
                   <button type="submit" class="btn btn-success btn-sm">▶ Send</button>
                 </form>
               {% endif %}
-              <form method="post" action="{% url 'delete_campaign' campaign.id %}" onsubmit="return confirm('Delete this campaign?')">
+              {% if campaign.status == "sending" %}
+                <form method="post" action="{% url 'stop_campaign' campaign.id %}">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-danger btn-sm">⏹ Stop</button>
+                </form>
+              {% endif %}
+              <form method="post" action="{% url 'delete_campaign' campaign.id %}" onsubmit="return confirm('Delete campaign?')">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-ghost btn-sm text-danger">Delete</button>
+                <button type="submit" class="btn btn-ghost btn-sm text-danger">🗑</button>
               </form>
             </div>
           </td>
@@ -53,8 +65,9 @@
     <div class="empty-icon">✉️</div>
     <div class="empty-title">No campaigns yet</div>
     <div class="empty-desc">Create an email campaign to start reaching your leads.</div>
-    <div class="mt-16">
+    <div class="mt-16 flex gap-12" style="justify-content:center;">
       <a href="{% url 'new_campaign' %}" class="btn btn-primary">+ Create First Campaign</a>
+      <a href="{% url 'smtp_profiles' %}" class="btn btn-secondary">🔑 Set Up SMTP Profile First</a>
     </div>
   </div>
 </div>

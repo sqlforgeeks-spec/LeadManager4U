@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}SMTP Profiles{% endblock %}
+{% block topbar_title %}SMTP Profiles{% endblock %}
+
+{% block topbar_actions %}
+  <a href="{% url 'campaigns' %}" class="btn btn-secondary btn-sm">← Campaigns</a>
+  <button type="button" class="btn btn-primary btn-sm" id="add-profile-btn">+ Add Profile</button>
+{% endblock %}
+
+{% block content %}
+
+<div class="alert alert-info mb-24">
+  <strong>💡 SMTP Profiles</strong> let you save your email sending credentials once and reuse them across campaigns.
+  For Gmail, use an <a href="https://myaccount.google.com/apppasswords" target="_blank" class="text-primary">App Password</a> instead of your account password.
+</div>
+
+<!-- Add Profile Form (hidden by default) -->
+<div class="card mb-24" id="add-profile-form" style="display:none;">
+  <div class="card-header">
+    <div class="card-title">Add New SMTP Profile</div>
+    <button type="button" class="btn btn-ghost btn-sm" id="close-form-btn">✕</button>
+  </div>
+  <div class="card-body">
+    <form method="post" action="{% url 'create_smtp_profile' %}">
+      {% csrf_token %}
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Profile Name *</label>
+          <input type="text" name="name" class="form-input" placeholder="Gmail – john@company.com" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">SMTP Host</label>
+          <input type="text" name="host" class="form-input" value="smtp.gmail.com">
+        </div>
+        <div class="form-group">
+          <label class="form-label">SMTP Port</label>
+          <input type="number" name="port" class="form-input" value="587">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Username / Email *</label>
+          <input type="text" name="user" class="form-input" placeholder="john@gmail.com" autocomplete="off" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password / App Password *</label>
+          <input type="password" name="password" class="form-input" placeholder="••••••••••••" autocomplete="new-password">
+          <div class="form-hint">For Gmail: use a 16-character App Password.</div>
+        </div>
+        <div class="form-group">
+          <label class="form-check">
+            <input type="checkbox" name="use_tls" value="on" checked>
+            Use TLS (STARTTLS — recommended for port 587)
+          </label>
+        </div>
+      </div>
+      <div class="flex gap-12 mt-16">
+        <button type="submit" class="btn btn-primary">Save Profile</button>
+        <button type="button" class="btn btn-secondary" id="cancel-form-btn">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Profiles list -->
+{% if profiles %}
+<div class="card">
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr><th>#</th><th>Profile Name</th><th>Host</th><th>Port</th><th>Username</th><th>TLS</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for p in profiles %}
+        <tr>
+          <td class="text-muted font-mono">#{{ p.id }}</td>
+          <td><strong>{{ p.name }}</strong></td>
+          <td class="font-mono text-muted" style="font-size:12px;">{{ p.host }}</td>
+          <td class="text-muted">{{ p.port }}</td>
+          <td class="font-mono">{{ p.user }}</td>
+          <td>{% if p.use_tls %}<span class="badge badge-completed">✓ TLS</span>{% else %}<span class="badge badge-paused">SSL</span>{% endif %}</td>
+          <td class="no-row-click">
+            <div class="action-group">
+              <a href="{% url 'new_campaign' %}" class="btn btn-secondary btn-sm">Use in Campaign</a>
+              <form method="post" action="{% url 'delete_smtp_profile' p.id %}" onsubmit="return confirm('Delete this SMTP profile?')">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-ghost btn-sm text-danger">🗑 Delete</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="empty-state">
+    <div class="empty-icon">🔑</div>
+    <div class="empty-title">No SMTP profiles yet</div>
+    <div class="empty-desc">Add a profile to save your email credentials for reuse across campaigns.</div>
+    <div class="mt-16">
+      <button type="button" class="btn btn-primary" id="add-profile-btn2">+ Add First Profile</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Quick-start guide -->
+<div class="card mt-24">
+  <div class="card-header"><div class="card-title">📧 Quick Setup Guides</div></div>
+  <div class="card-body">
+    <div class="meta-grid">
+      <div class="meta-item">
+        <div class="meta-label">Gmail</div>
+        <div style="font-size:13px; color:var(--text-muted); margin-top:4px;">
+          Host: <code>smtp.gmail.com</code> · Port: <code>587</code> · TLS: ✓<br>
+          Use an <strong>App Password</strong> (not your Gmail password).<br>
+          Enable 2FA → Google Account → Security → App Passwords.
+        </div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Outlook / Hotmail</div>
+        <div style="font-size:13px; color:var(--text-muted); margin-top:4px;">
+          Host: <code>smtp.office365.com</code> · Port: <code>587</code> · TLS: ✓<br>
+          Use your full email address as username.
+        </div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">SendGrid</div>
+        <div style="font-size:13px; color:var(--text-muted); margin-top:4px;">
+          Host: <code>smtp.sendgrid.net</code> · Port: <code>587</code> · TLS: ✓<br>
+          Username: <code>apikey</code> · Password: your API key.
+        </div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Mailgun</div>
+        <div style="font-size:13px; color:var(--text-muted); margin-top:4px;">
+          Host: <code>smtp.mailgun.org</code> · Port: <code>587</code> · TLS: ✓<br>
+          Username/password from your Mailgun SMTP credentials.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const form = document.getElementById('add-profile-form');
+const show = () => { form.style.display = ''; form.scrollIntoView({behavior:'smooth'}); };
+const hide = () => { form.style.display = 'none'; };
+document.getElementById('add-profile-btn')?.addEventListener('click', show);
+document.getElementById('add-profile-btn2')?.addEventListener('click', show);
+document.getElementById('close-form-btn')?.addEventListener('click', hide);
+document.getElementById('cancel-form-btn')?.addEventListener('click', hide);
+</script>
+{% endblock %}

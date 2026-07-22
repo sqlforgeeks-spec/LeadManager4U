@@ -6,6 +6,9 @@
 {% block topbar_actions %}
   <a href="{% url 'search_home' %}" class="btn btn-secondary btn-sm">← Search Jobs</a>
   <a href="{% url 'download_job_csv' job.id %}" class="btn btn-primary btn-sm">⬇ Download CSV</a>
+  {% if job.status in "completed,completed_with_errors" %}
+    <a href="{% url 'new_campaign' %}?job_id={{ job.id }}" class="btn btn-success btn-sm">✉ Create Campaign</a>
+  {% endif %}
   {% if job.status not in "queued,running" %}
     <form method="post" action="{% url 'delete_job' job.id %}" onsubmit="return confirm('Delete this job and ALL its leads permanently?')">
       {% csrf_token %}
@@ -20,6 +23,8 @@
 <div class="flex items-center gap-12 mb-24" style="flex-wrap:wrap;">
   <span class="badge badge-{{ job.status }}" id="job-status-badge" style="font-size:13px; padding:6px 14px;">{{ job.get_status_display }}</span>
   <span class="source-tag">{{ job.get_source_display }}</span>
+  {% if job.country %}<span class="source-tag" style="background:#F0FDF4; color:#166534;">{{ job.country|upper }}</span>{% endif %}
+  {% if job.search_type != "web" %}<span class="source-tag" style="background:#FFF7ED; color:#92400E;">{{ job.get_search_type_display }}</span>{% endif %}
   {% if is_running %}<span class="badge badge-live">Live updating</span>{% endif %}
 </div>
 
@@ -41,6 +46,8 @@
     <div class="meta-grid">
       <div class="meta-item"><div class="meta-label">Query</div><div class="meta-value">{{ job.search_phrase }}</div></div>
       <div class="meta-item"><div class="meta-label">Engine</div><div class="meta-value">{{ job.get_source_display }}</div></div>
+      <div class="meta-item"><div class="meta-label">Search Type</div><div class="meta-value">{{ job.get_search_type_display }}</div></div>
+      <div class="meta-item"><div class="meta-label">Country</div><div class="meta-value">{{ job.country|upper|default:"Any" }}</div></div>
       <div class="meta-item"><div class="meta-label">Location</div><div class="meta-value">{{ job.locations|default:"—" }}</div></div>
       <div class="meta-item"><div class="meta-label">Speed</div><div class="meta-value">{{ job.get_speed_display }}</div></div>
       <div class="meta-item"><div class="meta-label">Leads Found</div><div class="meta-value" id="job-collected">{{ job.collected_listings }}<span class="text-muted" style="font-size:14px;">/{{ job.max_results }}</span></div></div>
@@ -98,7 +105,7 @@
   <div class="table-wrap">
     <table class="table" id="search-listings-table">
       <thead>
-        <tr><th>Business / Page</th><th>Phone</th><th>Email</th><th>Website</th><th>Location</th></tr>
+        <tr><th>Business / Page</th><th>Phone</th><th>Email</th><th>Website</th><th>Location</th><th>Actions</th></tr>
       </thead>
       <tbody id="job-listings-body">
         {% for listing in listings %}
@@ -108,6 +115,11 @@
           <td>{% if listing.email %}<span class="truncate text-primary" title="{{ listing.email }}">{{ listing.email }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
           <td>{% if listing.website %}<a href="{{ listing.website }}" target="_blank" rel="noopener" class="text-primary truncate" style="max-width:160px; display:inline-block;" title="{{ listing.website }}">{{ listing.website }}</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
           <td class="text-muted">{{ listing.location|default:"—" }}</td>
+          <td class="no-row-click">
+            <form method="post" action="{% url 'delete_lead' listing.id %}" onsubmit="return confirm('Delete this lead?')">
+              {% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger" title="Delete">🗑</button>
+            </form>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -158,7 +170,11 @@ const render = (data) => {
       <td>${l.email ? `<span class="truncate text-primary">${escHtml(l.email)}</span>` : '<span class="text-muted">—</span>'}</td>
       <td>${l.website ? `<a href="${escHtml(l.website)}" target="_blank" rel="noopener" class="text-primary">Visit ↗</a>` : '<span class="text-muted">—</span>'}</td>
       <td class="text-muted">${escHtml(l.location)}</td>
+      <td>—</td>
     </tr>`).join("");
+  }
+  if (j.status === 'completed' || j.status === 'completed_with_errors') {
+    if (liveOn) { clearInterval(timer); timer = null; setTimeout(() => window.location.reload(), 2000); }
   }
 };
 

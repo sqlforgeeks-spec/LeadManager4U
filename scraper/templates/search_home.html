@@ -12,7 +12,7 @@
 <!-- New search job panel -->
 <div class="new-job-panel mb-24">
   <div class="panel-title">🔍 New Search Engine Scrape</div>
-  <div class="panel-sub">Extract business websites, emails, and phones from Google, Bing, Yahoo, DuckDuckGo, and Yandex.</div>
+  <div class="panel-sub">Extract business websites, emails, and phones from Google, Bing, Yahoo, DuckDuckGo, Yandex, Ecosia, and Ask.</div>
   <form method="post" action="{% url 'search_home' %}">
     {% csrf_token %}
     <div class="form-grid">
@@ -22,7 +22,7 @@
       </div>
       <div class="form-group">
         <label class="form-label">Location (optional)</label>
-        <input type="text" name="location" class="form-input" placeholder="e.g. New York, UK (leave blank to use in phrase)">
+        <input type="text" name="location" class="form-input" placeholder="e.g. New York, UK (or leave blank)">
       </div>
       <div class="form-group">
         <label class="form-label">Search Engine</label>
@@ -32,6 +32,42 @@
           <option value="yahoo">Y! Yahoo</option>
           <option value="duckduckgo">🦆 DuckDuckGo</option>
           <option value="yandex">Я Yandex</option>
+          <option value="ecosia">🌿 Ecosia</option>
+          <option value="ask">❓ Ask.com</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Country Filter</label>
+        <select name="country" class="form-select">
+          <option value="">🌍 Any Country</option>
+          <option value="us">🇺🇸 United States</option>
+          <option value="uk">🇬🇧 United Kingdom</option>
+          <option value="au">🇦🇺 Australia</option>
+          <option value="ca">🇨🇦 Canada</option>
+          <option value="in">🇮🇳 India</option>
+          <option value="de">🇩🇪 Germany</option>
+          <option value="fr">🇫🇷 France</option>
+          <option value="es">🇪🇸 Spain</option>
+          <option value="it">🇮🇹 Italy</option>
+          <option value="br">🇧🇷 Brazil</option>
+          <option value="nl">🇳🇱 Netherlands</option>
+          <option value="ru">🇷🇺 Russia</option>
+          <option value="jp">🇯🇵 Japan</option>
+          <option value="sg">🇸🇬 Singapore</option>
+          <option value="nz">🇳🇿 New Zealand</option>
+          <option value="za">🇿🇦 South Africa</option>
+          <option value="ng">🇳🇬 Nigeria</option>
+          <option value="ae">🇦🇪 UAE</option>
+          <option value="pk">🇵🇰 Pakistan</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Search Type</label>
+        <select name="search_type" class="form-select" id="search-type-sel">
+          <option value="web">🌐 Web Pages</option>
+          <option value="images">🖼 Images (Google only)</option>
+          <option value="videos">▶ Videos (Google only)</option>
+          <option value="news">📰 News (Google only)</option>
         </select>
       </div>
       <div class="form-group">
@@ -41,10 +77,18 @@
       <div class="form-group">
         <label class="form-label">Speed</label>
         <select name="speed" class="form-select">
-          <option value="slow">Slow (gentle, avoids blocks)</option>
+          <option value="slow">Slow (stealth, avoids blocks)</option>
           <option value="normal" selected>Normal</option>
           <option value="fast">Fast</option>
         </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Options</label>
+        <label class="form-check">
+          <input type="checkbox" name="visit_pages" value="1" checked id="visit-pages-chk">
+          Visit websites to extract emails &amp; phones
+        </label>
+        <div class="form-hint">Uncheck for faster scraping (URLs only, no contact details).</div>
       </div>
       <div class="form-group" style="justify-content:flex-end; align-items:flex-end;">
         <button type="submit" class="btn btn-launch">🚀 Start Search Scrape</button>
@@ -54,13 +98,17 @@
 </div>
 
 <div class="alert alert-info mb-24">
-  <strong>How it works:</strong> The scraper fetches SERP pages from the chosen engine, extracts business websites, then visits each site to find email addresses and phone numbers. Results are saved as leads in your database.
+  <strong>💡 Tips:</strong>
+  Use <strong>Country Filter</strong> to restrict results to a specific country.
+  Use <strong>Search Type</strong> to scrape Google Images or Videos instead of web pages.
+  Uncheck <em>Visit websites</em> to collect URLs quickly, then enrich later.
+  DuckDuckGo &amp; Ecosia are less likely to block automated requests.
 </div>
 
 <!-- Recent search jobs -->
 <div class="section-header">
   <div class="section-title">Recent Search Jobs</div>
-  <a href="{% url 'home' %}" class="btn btn-secondary btn-sm">← Back to Maps</a>
+  <a href="{% url 'home' %}" class="btn btn-secondary btn-sm">← Maps Dashboard</a>
 </div>
 
 {% if recent_jobs %}
@@ -68,13 +116,15 @@
   <div class="table-wrap">
     <table class="table">
       <thead>
-        <tr><th>#</th><th>Engine</th><th>Status</th><th>Query</th><th>Leads</th><th>Emails</th><th>Actions</th></tr>
+        <tr><th>#</th><th>Engine</th><th>Type</th><th>Country</th><th>Status</th><th>Query</th><th>Leads</th><th>Emails</th><th>Actions</th></tr>
       </thead>
       <tbody>
         {% for job in recent_jobs %}
         <tr data-href="{% url 'search_job_detail' job.id %}">
           <td class="text-muted font-mono">#{{ job.id }}</td>
           <td><span class="source-tag">{{ job.get_source_display }}</span></td>
+          <td class="text-muted">{{ job.get_search_type_display }}</td>
+          <td class="text-muted">{{ job.country|upper|default:"—" }}</td>
           <td><span class="badge badge-{{ job.status }}">{{ job.get_status_display }}</span></td>
           <td><span class="truncate" title="{{ job.search_phrase }}">{{ job.search_phrase }}</span>{% if job.locations %} <span class="text-muted">· {{ job.locations }}</span>{% endif %}</td>
           <td><strong>{{ job.collected_listings }}</strong><span class="text-muted">/{{ job.max_results }}</span></td>
@@ -82,6 +132,7 @@
           <td class="no-row-click">
             <div class="action-group">
               {% if job.status == "running" %}
+                <form method="post" action="{% url 'pause_job' job.id %}">{% csrf_token %}<button type="submit" class="btn btn-secondary btn-sm">⏸</button></form>
                 <form method="post" action="{% url 'stop_job' job.id %}">{% csrf_token %}<button type="submit" class="btn btn-danger btn-sm">Stop</button></form>
               {% elif job.status == "paused" %}
                 <form method="post" action="{% url 'resume_job' job.id %}">{% csrf_token %}<input type="hidden" name="resume_mode" value="restart_all"><button type="submit" class="btn btn-success btn-sm">Resume</button></form>
@@ -89,8 +140,11 @@
               {% elif job.status == "failed" %}
                 <form method="post" action="{% url 'resume_job' job.id %}">{% csrf_token %}<input type="hidden" name="resume_mode" value="restart_all"><button type="submit" class="btn btn-secondary btn-sm">Retry</button></form>
                 <form method="post" action="{% url 'delete_job' job.id %}" onsubmit="return confirm('Delete job #{{ job.id }} and all its leads?')">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">🗑</button></form>
+              {% elif job.status in "completed,completed_with_errors" %}
+                <a href="{% url 'new_campaign' %}?job_id={{ job.id }}" class="btn btn-secondary btn-sm">✉ Campaign</a>
+                <form method="post" action="{% url 'delete_job' job.id %}" onsubmit="return confirm('Delete job #{{ job.id }} and all its leads?')">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">🗑</button></form>
               {% else %}
-                <form method="post" action="{% url 'delete_job' job.id %}" onsubmit="return confirm('Delete job #{{ job.id }} and all its leads?')">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">🗑 Delete</button></form>
+                <span class="text-muted" style="font-size:12px;">{{ job.get_status_display }}</span>
               {% endif %}
               <a href="{% url 'download_job_csv' job.id %}" class="download-btn">⬇</a>
             </div>
@@ -111,4 +165,27 @@
 </div>
 {% endif %}
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Show/hide images/videos/news hint based on engine
+const engineSel = document.querySelector('select[name="engine"]');
+const typeSel = document.getElementById('search-type-sel');
+if (engineSel && typeSel) {
+  engineSel.addEventListener('change', () => {
+    const engine = engineSel.value;
+    const googleOnly = ['images', 'videos', 'news'];
+    [...typeSel.options].forEach(opt => {
+      if (googleOnly.includes(opt.value)) {
+        opt.disabled = engine !== 'google';
+        opt.text = opt.text.replace(' (Google only)', '') + (engine !== 'google' ? ' (Google only)' : '');
+      }
+    });
+    if (engine !== 'google' && googleOnly.includes(typeSel.value)) {
+      typeSel.value = 'web';
+    }
+  });
+}
+</script>
 {% endblock %}

@@ -6,6 +6,13 @@
 {% block topbar_actions %}
   <a href="{% url 'home' %}" class="btn btn-secondary btn-sm">← Dashboard</a>
   <a href="{% url 'download_job_csv' job.id %}" class="btn btn-primary btn-sm">⬇ Download CSV</a>
+  {% if job.status in "completed,completed_with_errors" %}
+    {% if auto_campaign %}
+      <a href="{% url 'campaign_detail' auto_campaign.id %}" class="btn btn-success btn-sm">✉ Auto-Campaign Created →</a>
+    {% else %}
+      <a href="{% url 'new_campaign' %}?job_id={{ job.id }}" class="btn btn-success btn-sm">✉ Create Campaign</a>
+    {% endif %}
+  {% endif %}
   {% if job.status not in "queued,running" %}
     <form method="post" action="{% url 'delete_job' job.id %}" onsubmit="return confirm('Delete this job and ALL its leads permanently?')">
       {% csrf_token %}
@@ -21,6 +28,9 @@
   <span class="badge badge-{{ job.status }}" id="job-status-badge" style="font-size:13px; padding:6px 14px;">{{ job.get_status_display }}</span>
   <span class="source-tag">{{ job.get_source_display }}</span>
   {% if is_running %}<span class="badge badge-live">Live updating</span>{% endif %}
+  {% if job.auto_campaign_created %}
+    <span class="badge badge-completed">✉ Campaign auto-created</span>
+  {% endif %}
 </div>
 
 <!-- Meta + controls -->
@@ -104,7 +114,7 @@
   <div class="table-wrap">
     <table class="table" id="job-listings-table">
       <thead>
-        <tr><th>Business Name</th><th>Phone</th><th>Email</th><th>Website</th><th>Location</th></tr>
+        <tr><th>Business Name</th><th>Phone</th><th>Email</th><th>Website</th><th>Location</th><th>Actions</th></tr>
       </thead>
       <tbody id="job-listings-body">
         {% for listing in listings %}
@@ -114,6 +124,11 @@
           <td>{% if listing.email %}<span class="truncate text-primary" title="{{ listing.email }}">{{ listing.email }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
           <td>{% if listing.website %}<a href="{{ listing.website }}" target="_blank" rel="noopener" class="text-primary">Visit ↗</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
           <td class="text-muted">{{ listing.location }}</td>
+          <td class="no-row-click">
+            <form method="post" action="{% url 'delete_lead' listing.id %}" onsubmit="return confirm('Delete this lead?')">
+              {% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger" title="Delete">🗑</button>
+            </form>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -181,13 +196,11 @@ const render = (data) => {
   if (errBox) { errBox.style.display = j.last_error ? "" : "none"; document.getElementById("job-error-text").textContent = j.last_error || ""; }
   const stamp = data.timestamp || new Date().toLocaleTimeString();
   setTxt("job-updated-label", "Updated " + stamp);
-  // Logs
   const logBox = document.getElementById("job-log-box");
   if (logBox && Array.isArray(data.logs) && data.logs.length) {
     logBox.innerHTML = data.logs.map(l => `<div class="log-line log-${l.level.toLowerCase()}">${escHtml(l.created_at)} [${l.level}] ${escHtml(l.message)}</div>`).join("");
     logBox.scrollTop = logBox.scrollHeight;
   }
-  // Listings
   const tbody = document.getElementById("job-listings-body");
   if (tbody && Array.isArray(data.listings) && data.listings.length) {
     tbody.innerHTML = data.listings.map(l => `<tr>
@@ -196,7 +209,12 @@ const render = (data) => {
       <td>${l.email ? `<span class="truncate text-primary" title="${escHtml(l.email)}">${escHtml(l.email)}</span>` : '<span class="text-muted">—</span>'}</td>
       <td>${l.website ? `<a href="${escHtml(l.website)}" target="_blank" rel="noopener" class="text-primary">Visit ↗</a>` : '<span class="text-muted">—</span>'}</td>
       <td class="text-muted">${escHtml(l.location)}</td>
+      <td>—</td>
     </tr>`).join("");
+  }
+  // Auto-reload page when job completes (to show campaign button)
+  if (j.status === 'completed' || j.status === 'completed_with_errors') {
+    if (liveOn) { clearInterval(timer); timer = null; setTimeout(() => window.location.reload(), 2000); }
   }
 };
 

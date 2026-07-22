@@ -10,6 +10,18 @@
 
 {% block content %}
 
+<!-- AI Tips -->
+{% if ai_tips %}
+<div class="mb-24">
+  {% for tip in ai_tips %}
+  <div class="alert alert-{% if tip.type == 'warning' %}warning{% elif tip.type == 'success' %}success{% else %}info{% endif %} flex items-center gap-12" style="margin-bottom:8px;">
+    <span style="font-size:20px; flex-shrink:0;">{{ tip.icon }}</span>
+    <span>{{ tip.text }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
 <!-- Stats -->
 <div class="stats-grid">
   <div class="stat-card">
@@ -85,6 +97,12 @@
         </select>
       </div>
       <div class="form-group" style="justify-content:flex-end; align-items:flex-end;">
+        <div style="margin-bottom:10px;">
+          <label class="form-check">
+            <input type="checkbox" name="auto_campaign" value="1" checked>
+            Auto-create email campaign when done
+          </label>
+        </div>
         <button type="submit" class="btn btn-launch">🚀 Start Scraping</button>
       </div>
     </div>
@@ -96,6 +114,7 @@
   <a href="{% url 'search_home' %}" class="btn btn-secondary">🔍 Search Engine Scraper</a>
   <a href="{% url 'new_campaign' %}" class="btn btn-secondary">✉️ New Email Campaign</a>
   <a href="{% url 'leads' %}" class="btn btn-secondary">👤 Manage Leads</a>
+  <a href="{% url 'smtp_profiles' %}" class="btn btn-secondary">🔑 SMTP Profiles</a>
   <a href="{% url 'download_csv' %}" class="btn btn-secondary">⬇️ Export All Leads</a>
 </div>
 
@@ -161,9 +180,12 @@
                 <form method="post" action="{% url 'stop_job' job.id %}">{% csrf_token %}<button type="submit" class="btn btn-danger btn-sm">Cancel</button></form>
               {% elif job.status == "failed" %}
                 <form method="post" action="{% url 'resume_job' job.id %}">{% csrf_token %}<input type="hidden" name="resume_mode" value="continue"><button type="submit" class="btn btn-secondary btn-sm">Retry</button></form>
-                <form method="post" action="{% url 'delete_job' job.id %}" onsubmit="return confirm('Delete job #{{ job.id }} and all its leads?')">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">🗑 Delete</button></form>
+                <form method="post" action="{% url 'delete_job' job.id %}" onsubmit="return confirm('Delete job #{{ job.id }} and all its leads?')">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">🗑</button></form>
               {% else %}
-                <form method="post" action="{% url 'delete_job' job.id %}" onsubmit="return confirm('Delete job #{{ job.id }} and all its leads?')">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">🗑 Delete</button></form>
+                {% if job.status in "completed,completed_with_errors" %}
+                  <a href="{% url 'new_campaign' %}?job_id={{ job.id }}" class="btn btn-secondary btn-sm">✉ Campaign</a>
+                {% endif %}
+                <form method="post" action="{% url 'delete_job' job.id %}" onsubmit="return confirm('Delete job #{{ job.id }} and all its leads?')">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">🗑</button></form>
               {% endif %}
             </div>
           </td>
@@ -188,7 +210,6 @@
 {% block scripts %}
 <script>
 const apiUrl = "{% url 'api_recent_jobs' %}";
-const csrf = getCookie("csrftoken");
 let liveOn = {{ refresh_home|yesno:"true,false" }};
 let timer = null;
 
@@ -196,7 +217,6 @@ const refresh = () => {
   fetch(apiUrl).then(r => r.ok ? r.json() : null).then(data => {
     if (!data) return;
     document.getElementById("stat-active-jobs").textContent = data.stats.running + data.stats.queued;
-    // Just reload if any job is active — keeps template logic simple
     if (data.stats.running > 0 || data.stats.queued > 0) {
       window.location.reload();
     }

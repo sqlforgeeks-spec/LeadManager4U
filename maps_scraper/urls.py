@@ -1,34 +1,39 @@
-"""
-URL configuration for maps_scraper project.
-
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/5.1/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
-"""
 from django.contrib import admin
 from django.urls import path
- 
 from scraper import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+
+    # Dashboard
     path('', views.home, name='home'),
-    path('results/', views.results, name='results'),
+
+    # Search engine scraping
+    path('search/', views.search_home, name='search_home'),
+    path('search/<int:job_id>/', views.search_job_detail, name='search_job_detail'),
+
+    # Leads
+    path('leads/', views.leads, name='leads'),
+    path('results/', views.results, name='results'),  # legacy redirect
+
+    # Email campaigns
+    path('campaigns/', views.campaigns, name='campaigns'),
+    path('campaigns/new/', views.new_campaign, name='new_campaign'),
+    path('campaigns/<int:campaign_id>/', views.campaign_detail, name='campaign_detail'),
+    path('campaigns/<int:campaign_id>/send/', views.send_campaign_view, name='send_campaign'),
+    path('campaigns/<int:campaign_id>/delete/', views.delete_campaign, name='delete_campaign'),
+
+    # Downloads – all leads
     path('download/', views.download_csv, name='download_csv'),
     path('download/phone/', views.download_phone_csv, name='download_phone_csv'),
     path('download/email/', views.download_email_csv, name='download_email_csv'),
     path('download/website/', views.download_website_csv, name='download_website_csv'),
+
+    # API
     path('api/jobs/recent/', views.api_recent_jobs, name='api_recent_jobs'),
     path('api/jobs/<int:job_id>/', views.api_job_status, name='api_job_status'),
+
+    # Job detail & controls (maps)
     path('jobs/<int:job_id>/', views.job_detail, name='job_detail'),
     path('jobs/<int:job_id>/download/', views.download_job_csv, name='download_job_csv'),
     path('jobs/<int:job_id>/download/phone/', views.download_job_phone_csv, name='download_job_phone_csv'),

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Email Campaigns{% endblock %}
+{% block topbar_title %}Email Campaigns{% endblock %}
+
+{% block topbar_actions %}
+  <a href="{% url 'new_campaign' %}" class="btn btn-primary btn-sm">+ New Campaign</a>
+{% endblock %}
+
+{% block content %}
+
+{% if campaigns %}
+<div class="card">
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr><th>#</th><th>Name</th><th>Status</th><th>Subject</th><th>Targets</th><th>Sent</th><th>Failed</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for campaign in campaigns %}
+        <tr data-href="{% url 'campaign_detail' campaign.id %}">
+          <td class="text-muted font-mono">#{{ campaign.id }}</td>
+          <td><strong>{{ campaign.name }}</strong></td>
+          <td><span class="badge badge-{{ campaign.status }}">{{ campaign.get_status_display }}</span></td>
+          <td><span class="truncate" title="{{ campaign.subject }}" style="max-width:220px;">{{ campaign.subject }}</span></td>
+          <td>{{ campaign.total_targets }}</td>
+          <td class="text-success">{{ campaign.total_sent }}</td>
+          <td class="text-danger">{{ campaign.total_failed }}</td>
+          <td class="no-row-click">
+            <div class="action-group">
+              <a href="{% url 'campaign_detail' campaign.id %}" class="btn btn-secondary btn-sm">View</a>
+              {% if campaign.status == "draft" or campaign.status == "failed" %}
+                <form method="post" action="{% url 'send_campaign' campaign.id %}">
+                  {% csrf_token %}
+                  <button type="submit" class="btn btn-success btn-sm">▶ Send</button>
+                </form>
+              {% endif %}
+              <form method="post" action="{% url 'delete_campaign' campaign.id %}" onsubmit="return confirm('Delete this campaign?')">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-ghost btn-sm text-danger">Delete</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="empty-state">
+    <div class="empty-icon">✉️</div>
+    <div class="empty-title">No campaigns yet</div>
+    <div class="empty-desc">Create an email campaign to start reaching your leads.</div>
+    <div class="mt-16">
+      <a href="{% url 'new_campaign' %}" class="btn btn-primary">+ Create First Campaign</a>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

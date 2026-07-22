@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Search Engine Scraper{% endblock %}
+{% block topbar_title %}Search Engine Scraper{% endblock %}
+
+{% block topbar_actions %}
+  <a href="{% url 'leads' %}" class="btn btn-secondary btn-sm">View Leads</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- New search job panel -->
+<div class="new-job-panel mb-24">
+  <div class="panel-title">🔍 New Search Engine Scrape</div>
+  <div class="panel-sub">Extract business websites, emails, and phones from Google, Bing, Yahoo, DuckDuckGo, and Yandex.</div>
+  <form method="post" action="{% url 'search_home' %}">
+    {% csrf_token %}
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Search Phrase</label>
+        <input type="text" name="search_phrase" class="form-input" placeholder="e.g. dentist in London, SEO agency" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Location (optional)</label>
+        <input type="text" name="location" class="form-input" placeholder="e.g. New York, UK (leave blank to use in phrase)">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Search Engine</label>
+        <select name="engine" class="form-select">
+          <option value="google">🔍 Google</option>
+          <option value="bing">Ⓑ Bing</option>
+          <option value="yahoo">Y! Yahoo</option>
+          <option value="duckduckgo">🦆 DuckDuckGo</option>
+          <option value="yandex">Я Yandex</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Max Results</label>
+        <input type="number" name="max_results" class="form-input" min="5" max="500" value="100">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Speed</label>
+        <select name="speed" class="form-select">
+          <option value="slow">Slow (gentle, avoids blocks)</option>
+          <option value="normal" selected>Normal</option>
+          <option value="fast">Fast</option>
+        </select>
+      </div>
+      <div class="form-group" style="justify-content:flex-end; align-items:flex-end;">
+        <button type="submit" class="btn btn-launch">🚀 Start Search Scrape</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div class="alert alert-info mb-24">
+  <strong>How it works:</strong> The scraper fetches SERP pages from the chosen engine, extracts business websites, then visits each site to find email addresses and phone numbers. Results are saved as leads in your database.
+</div>
+
+<!-- Recent search jobs -->
+<div class="section-header">
+  <div class="section-title">Recent Search Jobs</div>
+  <a href="{% url 'home' %}" class="btn btn-secondary btn-sm">← Back to Maps</a>
+</div>
+
+{% if recent_jobs %}
+<div class="card">
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr><th>#</th><th>Engine</th><th>Status</th><th>Query</th><th>Leads</th><th>Emails</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for job in recent_jobs %}
+        <tr data-href="{% url 'search_job_detail' job.id %}">
+          <td class="text-muted font-mono">#{{ job.id }}</td>
+          <td><span class="source-tag">{{ job.get_source_display }}</span></td>
+          <td><span class="badge badge-{{ job.status }}">{{ job.get_status_display }}</span></td>
+          <td><span class="truncate" title="{{ job.search_phrase }}">{{ job.search_phrase }}</span>{% if job.locations %} <span class="text-muted">· {{ job.locations }}</span>{% endif %}</td>
+          <td><strong>{{ job.collected_listings }}</strong><span class="text-muted">/{{ job.max_results }}</span></td>
+          <td class="text-success">{{ job.emails_found }}</td>
+          <td class="no-row-click">
+            <div class="action-group">
+              {% if job.status == "running" %}
+                <form method="post" action="{% url 'stop_job' job.id %}">{% csrf_token %}<button type="submit" class="btn btn-danger btn-sm">Stop</button></form>
+              {% elif job.status == "failed" %}
+                <form method="post" action="{% url 'resume_job' job.id %}">{% csrf_token %}<input type="hidden" name="resume_mode" value="restart_all"><button type="submit" class="btn btn-secondary btn-sm">Retry</button></form>
+              {% else %}
+                <span class="text-muted" style="font-size:12px;">{{ job.get_status_display }}</span>
+              {% endif %}
+              <a href="{% url 'download_job_csv' job.id %}" class="download-btn">⬇</a>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="empty-state">
+    <div class="empty-icon">🔍</div>
+    <div class="empty-title">No search jobs yet</div>
+    <div class="empty-desc">Use the form above to scrape search engines for leads.</div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

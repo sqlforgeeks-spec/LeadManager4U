@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}Campaign: {{ campaign.name }}{% endblock %}
+{% block topbar_title %}{{ campaign.name }}{% endblock %}
+
+{% block topbar_actions %}
+  <a href="{% url 'campaigns' %}" class="btn btn-secondary btn-sm">← Campaigns</a>
+  {% if campaign.status == "draft" or campaign.status == "failed" %}
+    <form method="post" action="{% url 'send_campaign' campaign.id %}">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-success btn-sm">▶ Send Campaign</button>
+    </form>
+  {% endif %}
+  <form method="post" action="{% url 'delete_campaign' campaign.id %}" onsubmit="return confirm('Delete this campaign permanently?')">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+  </form>
+{% endblock %}
+
+{% block content %}
+
+<!-- Status + progress -->
+<div class="flex items-center gap-12 mb-24" style="flex-wrap:wrap;">
+  <span class="badge badge-{{ campaign.status }}" style="font-size:13px; padding:6px 14px;">{{ campaign.get_status_display }}</span>
+  {% if campaign.status == "sending" %}<span class="badge badge-live">Sending…</span>{% endif %}
+</div>
+
+<div class="stats-grid mb-24">
+  <div class="stat-card">
+    <div class="stat-icon blue">🎯</div>
+    <div class="stat-body"><div class="stat-value">{{ campaign.total_targets }}</div><div class="stat-label">Target Recipients</div></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon green">✅</div>
+    <div class="stat-body"><div class="stat-value">{{ campaign.total_sent }}</div><div class="stat-label">Sent</div></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon red">❌</div>
+    <div class="stat-body"><div class="stat-value">{{ campaign.total_failed }}</div><div class="stat-label">Failed</div></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon orange">⏭️</div>
+    <div class="stat-body"><div class="stat-value">{{ campaign.total_skipped }}</div><div class="stat-label">Skipped</div></div>
+  </div>
+</div>
+
+{% if campaign.total_targets %}
+<div class="card mb-24">
+  <div class="card-body">
+    <div class="progress-wrap">
+      <div class="progress-bar" style="width:{{ campaign.progress_pct }}%"></div>
+    </div>
+    <div class="progress-label">{{ campaign.progress_pct }}% complete</div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Campaign info -->
+<div class="card mb-24">
+  <div class="card-header"><div class="card-title">Campaign Details</div></div>
+  <div class="card-body">
+    <div class="meta-grid">
+      <div class="meta-item"><div class="meta-label">From</div><div class="meta-value">{{ campaign.from_name|default:"" }} &lt;{{ campaign.from_email }}&gt;</div></div>
+      <div class="meta-item"><div class="meta-label">Reply-To</div><div class="meta-value">{{ campaign.reply_to|default:"—" }}</div></div>
+      <div class="meta-item"><div class="meta-label">SMTP</div><div class="meta-value font-mono" style="font-size:12px;">{{ campaign.smtp_host }}:{{ campaign.smtp_port }}</div></div>
+      <div class="meta-item"><div class="meta-label">Job Filter</div><div class="meta-value">{% if campaign.job_filter %}Job #{{ campaign.job_filter.id }} — {{ campaign.job_filter.search_phrase }}{% else %}All leads{% endif %}</div></div>
+      <div class="meta-item"><div class="meta-label">Created</div><div class="meta-value">{{ campaign.created_at|date:"Y-m-d H:i" }}</div></div>
+    </div>
+    <div class="mt-16">
+      <div class="form-label mb-4">Subject</div>
+      <div class="body-preview">{{ campaign.subject }}</div>
+    </div>
+    <div class="mt-16">
+      <div class="form-label mb-4">Body Preview</div>
+      <div class="body-preview">{{ campaign.body }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- Recipients -->
+<div class="section-header">
+  <div class="section-title">Recipients</div>
+  <span class="text-muted" style="font-size:13px;">{{ sends|length }} shown</span>
+</div>
+
+{% if sends %}
+<div class="card">
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr><th>Business</th><th>Email</th><th>Phone</th><th>Location</th><th>Status</th><th>Sent At</th><th>Error</th></tr>
+      </thead>
+      <tbody>
+        {% for send in sends %}
+        <tr>
+          <td><strong>{{ send.listing.name }}</strong></td>
+          <td class="font-mono text-primary">{{ send.listing.email }}</td>
+          <td class="text-muted">{{ send.listing.phone|default:"—" }}</td>
+          <td class="text-muted">{{ send.listing.location }}</td>
+          <td>
+            {% if send.status == "sent" %}<span class="badge badge-completed">Sent</span>
+            {% elif send.status == "failed" %}<span class="badge badge-failed">Failed</span>
+            {% elif send.status == "skipped" %}<span class="badge badge-paused">Skipped</span>
+            {% else %}<span class="badge badge-queued">Pending</span>{% endif %}
+          </td>
+          <td class="text-muted">{{ send.sent_at|date:"H:i:s"|default:"—" }}</td>
+          <td class="text-danger" style="font-size:12px; max-width:180px;">{% if send.error %}<span class="truncate" title="{{ send.error }}">{{ send.error }}</span>{% else %}—{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="empty-state">
+    <div class="empty-icon">📭</div>
+    <div class="empty-title">No recipients yet</div>
+    <div class="empty-desc">This campaign has no leads to send to with email addresses.</div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+{% if campaign.status == "sending" %}
+<script>
+  // Auto-refresh while sending
+  setTimeout(() => window.location.reload(), 8000);
+</script>
+{% endif %}
+{% endblock %}

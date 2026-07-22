@@ -17,10 +17,20 @@ class ScrapeJob(models.Model):
         ("fast", "Fast"),
     ]
 
+    SOURCE_CHOICES = [
+        ("maps", "Google Maps"),
+        ("google", "Google Search"),
+        ("bing", "Bing"),
+        ("yahoo", "Yahoo"),
+        ("duckduckgo", "DuckDuckGo"),
+        ("yandex", "Yandex"),
+    ]
+
     status = models.CharField(max_length=32, choices=STATUS_CHOICES, default="queued")
+    source = models.CharField(max_length=32, choices=SOURCE_CHOICES, default="maps")
     search_phrase = models.CharField(max_length=255)
-    domain = models.CharField(max_length=32)
-    locations = models.TextField()
+    domain = models.CharField(max_length=32, default="com")
+    locations = models.TextField(blank=True)
     max_results = models.PositiveIntegerField(default=1000)
     total_results = models.PositiveIntegerField(default=0)
     collected_listings = models.PositiveIntegerField(default=0)
@@ -34,7 +44,18 @@ class ScrapeJob(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Job {self.id} - {self.search_phrase}"
+        return f"Job {self.id} - {self.search_phrase} ({self.source})"
+
+    def get_source_display_icon(self):
+        icons = {
+            "maps": "🗺️",
+            "google": "🔍",
+            "bing": "Ⓑ",
+            "yahoo": "Y!",
+            "duckduckgo": "🦆",
+            "yandex": "Я",
+        }
+        return icons.get(self.source, "🔍")
 
 
 class JobLog(models.Model):
@@ -58,11 +79,82 @@ class BusinessListing(models.Model):
     name = models.CharField(max_length=255)
     phone = models.CharField(max_length=50, blank=True)
     email = models.EmailField(blank=True)
-    website = models.URLField(blank=True)
-    maps_url = models.URLField(blank=True)
+    website = models.URLField(blank=True, max_length=500)
+    maps_url = models.URLField(blank=True, max_length=500)
+    address = models.CharField(max_length=500, blank=True)
     search_query = models.CharField(max_length=255)
     location = models.CharField(max_length=255)
+    source = models.CharField(max_length=32, default="maps")
     scraped_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-scraped_at']
 
     def __str__(self):
         return self.name
+
+
+class EmailCampaign(models.Model):
+    STATUS_CHOICES = [
+        ("draft", "Draft"),
+        ("sending", "Sending"),
+        ("sent", "Sent"),
+        ("failed", "Failed"),
+    ]
+
+    name = models.CharField(max_length=255)
+    subject = models.CharField(max_length=500)
+    body = models.TextField(help_text="Use {name}, {email}, {phone}, {website}, {location} as placeholders.")
+    from_name = models.CharField(max_length=255, blank=True)
+    from_email = models.EmailField()
+    reply_to = models.EmailField(blank=True)
+    smtp_host = models.CharField(max_length=255, default="smtp.gmail.com")
+    smtp_port = models.PositiveIntegerField(default=587)
+    smtp_user = models.CharField(max_length=255)
+    smtp_password = models.CharField(max_length=500)
+    use_tls = models.BooleanField(default=True)
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default="draft")
+    total_sent = models.PositiveIntegerField(default=0)
+    total_failed = models.PositiveIntegerField(default=0)
+    total_skipped = models.PositiveIntegerField(default=0)
+    job_filter = models.ForeignKey(
+        ScrapeJob, null=True, blank=True, on_delete=models.SET_NULL,
+        help_text="If set, only send to leads from this job."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def total_targets(self):
+        return self.sends.count()
+
+    @property
+    def progress_pct(self):
+        total = self.total_targets
+        if not total:
+            return 0
+        return min(100, int((self.total_sent + self.total_failed + self.total_skipped) * 100 / total))
+
+
+class EmailSend(models.Model):
+    STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("sent", "Sent"),
+        ("failed", "Failed"),
+        ("skipped", "Skipped"),
+    ]
+
+    campaign = models.ForeignKey(EmailCampaign, on_delete=models.CASCADE, related_name="sends")
+    listing = models.ForeignKey(BusinessListing, on_delete=models.CASCADE, related_name="email_sends")
+    status = models.CharField(max_length=32, choices=STATUS_CHOICES, default="pending")
+    sent_at = models.DateTimeField(null=True, blank=True)
+    error = models.TextField(blank=True)
+
+    class Meta:
+        unique_together = [["campaign", "listing"]]
+
+    def __str__(self):
+        return f"{self.campaign} → {self.listing}"

@@ -1,0 +1,65 @@
+I have an existing Django lead-generation app that scrapes business data from Google Maps and automatically sends emails via SMTP, along with a WhatsApp feature. Completely remove WhatsApp from the entire app—frontend, backend, APIs, models, settings, tasks, and unused dependencies—while keeping the existing email functionality fully working. Add a new modular search-engine scraping system for Google Search, Google Images, Bing, Yahoo, Yandex, and other practical search engines to extract business names, emails, phone numbers, websites, addresses, and other useful public business data, using the same relevant filters and workflow as the current Google Maps scraper wherever possible. Completely redesign the entire website from scratch into a fast, premium, modern SaaS/admin dashboard using the attached project as design inspiration for panels, layout, placement, colors, spacing, and visual effects, but create a more polished and original experience. Review the existing app carefully, remove confusing or overlapping features, simplify the user journey, improve speed, responsiveness, scraping performance, filtering, duplicate detection, lead management, exports, progress tracking, error handling, and email workflows. You have full creative freedom to restructure the UI, architecture, workflows, and add useful features wherever they improve the product. The final result should feel like a premium, fast, intuitive lead-generation platform focused on scraping leads from maps and search engines and contacting them through email only.
+
+19 minutes ago
+Planning complex application overhaul
+
+Planning complex application overhaul
+This is a major overhaul — let me first explore the full codebase to understand everything before touching a line.
+
+
+4 actions
+Let me read the key remaining files before I start building.
+
+
+9 actions
+Now I have everything I need. Let me build the full overhaul — new models, search engine scraper, SMTP email campaigns, and a complete premium UI redesign. Working in parallel batches.
+
+
+4 actions
+Let me write all remaining core files in parallel batches.
+
+
+2 actions
+Continuing — let me write all remaining files in parallel batches.
+
+
+2 actions
+Continuing with views.py and the URL config simultaneously:
+
+
+2 actions
+Let me now write all remaining files in parallel — URLs, migration, admin, and all templates plus CSS:
+
+
+2 actions
+Continuing — writing the migration, admin, and all templates/CSS in parallel:
+
+
+2 actions
+Let me write admin, config files, and the complete CSS + all templates in parallel batches:
+
+
+3 actions
+Now let me configure the workflow and write all templates + CSS simultaneously:
+
+
+3 actions
+Workflow configured. Now writing all 10 templates + CSS in parallel:
+
+
+2 actions
+Writing all 9 templates and replit.md simultaneously:
+
+
+2 actions
+Writing all remaining templates simultaneously:
+
+
+Created home.html
+You've reached your daily free quota limit. It will reset at 12:00 AM UTC.
+
+
+Worked for 14 minutes
+
+Scroll to latest
+You're out of credits.

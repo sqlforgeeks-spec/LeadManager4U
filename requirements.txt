@@ -1,0 +1,16 @@
+Django
+selenium
+webdriver-manager
+beautifulsoup4
+requests
+pandas
+python-dotenv
+lxml
+beautifulsoup4
+Django
+lxml
+pandas
+python-dotenv
+requests
+selenium
+webdriver-manager

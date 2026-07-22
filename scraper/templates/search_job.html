@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Job #{{ job.id }}{% endblock %}
-{% block topbar_title %}Job #{{ job.id }} — {{ job.search_phrase|truncatechars:40 }}{% endblock %}
+{% block title %}Search Job #{{ job.id }}{% endblock %}
+{% block topbar_title %}Search Job #{{ job.id }} — {{ job.search_phrase|truncatechars:40 }}{% endblock %}
 
 {% block topbar_actions %}
-  <a href="{% url 'home' %}" class="btn btn-secondary btn-sm">← Dashboard</a>
+  <a href="{% url 'search_home' %}" class="btn btn-secondary btn-sm">← Search Jobs</a>
   <a href="{% url 'download_job_csv' job.id %}" class="btn btn-primary btn-sm">⬇ Download CSV</a>
 {% endblock %}
 
@@ -27,20 +27,18 @@
         <form method="post" action="{% url 'stop_job' job.id %}">{% csrf_token %}<button type="submit" class="btn btn-danger btn-sm">⏹ Stop</button></form>
       {% endif %}
       {% if can_resume %}
-        <button type="button" class="btn btn-success btn-sm" id="resume-open">▶ Resume</button>
+        <form method="post" action="{% url 'resume_job' job.id %}">{% csrf_token %}<input type="hidden" name="resume_mode" value="restart_all"><button type="submit" class="btn btn-success btn-sm">↺ Retry</button></form>
       {% endif %}
     </div>
   </div>
   <div class="card-body">
     <div class="meta-grid">
       <div class="meta-item"><div class="meta-label">Query</div><div class="meta-value">{{ job.search_phrase }}</div></div>
-      <div class="meta-item"><div class="meta-label">Domain</div><div class="meta-value">google.{{ job.domain }}</div></div>
+      <div class="meta-item"><div class="meta-label">Engine</div><div class="meta-value">{{ job.get_source_display }}</div></div>
+      <div class="meta-item"><div class="meta-label">Location</div><div class="meta-value">{{ job.locations|default:"—" }}</div></div>
       <div class="meta-item"><div class="meta-label">Speed</div><div class="meta-value">{{ job.get_speed_display }}</div></div>
-      <div class="meta-item"><div class="meta-label">Locations</div><div class="meta-value" style="font-size:12px;">{{ job.locations }}</div></div>
-      <div class="meta-item"><div class="meta-label">Collected</div><div class="meta-value" id="job-collected">{{ job.collected_listings }}<span class="text-muted" style="font-size:14px;">/{{ job.max_results }}</span></div></div>
-      <div class="meta-item"><div class="meta-label">Processed</div><div class="meta-value" id="job-processed">{{ job.processed_listings }}</div></div>
+      <div class="meta-item"><div class="meta-label">Leads Found</div><div class="meta-value" id="job-collected">{{ job.collected_listings }}<span class="text-muted" style="font-size:14px;">/{{ job.max_results }}</span></div></div>
       <div class="meta-item"><div class="meta-label">Emails Found</div><div class="meta-value text-success" id="job-emails">{{ job.emails_found }}</div></div>
-      <div class="meta-item"><div class="meta-label">Locations Done</div><div class="meta-value" id="job-locations-done">{{ job.processed_locations }}/{{ job.total_locations }}</div></div>
     </div>
 
     <div class="mt-16">
@@ -51,12 +49,8 @@
     </div>
 
     {% if job.last_error %}
-    <div class="alert alert-error mt-16" id="job-error">
-      <strong>Error:</strong> <span id="job-error-text">{{ job.last_error }}</span>
-    </div>
-    {% else %}
-    <div class="alert alert-error mt-16" id="job-error" style="display:none">
-      <strong>Error:</strong> <span id="job-error-text"></span>
+    <div class="alert alert-error mt-16">
+      <strong>Error:</strong> {{ job.last_error }}
     </div>
     {% endif %}
 
@@ -77,7 +71,7 @@
 
 <!-- Logs -->
 <div class="section-header mt-24">
-  <div class="section-title">Live Logs</div>
+  <div class="section-title">Scraping Logs</div>
 </div>
 <div class="log-box" id="job-log-box">
   {% for log in logs %}
@@ -89,16 +83,16 @@
 
 <!-- Results table -->
 <div class="section-header mt-24">
-  <div class="section-title">Latest Results</div>
+  <div class="section-title">Leads Found</div>
   <span class="text-muted" style="font-size:13px;">Showing up to 200</span>
 </div>
 
 {% if listings %}
 <div class="card">
   <div class="table-wrap">
-    <table class="table" id="job-listings-table">
+    <table class="table" id="search-listings-table">
       <thead>
-        <tr><th>Business Name</th><th>Phone</th><th>Email</th><th>Website</th><th>Location</th></tr>
+        <tr><th>Business / Page</th><th>Phone</th><th>Email</th><th>Website</th><th>Location</th></tr>
       </thead>
       <tbody id="job-listings-body">
         {% for listing in listings %}
@@ -106,8 +100,8 @@
           <td><strong>{{ listing.name }}</strong></td>
           <td>{% if listing.phone %}<span class="font-mono">{{ listing.phone }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
           <td>{% if listing.email %}<span class="truncate text-primary" title="{{ listing.email }}">{{ listing.email }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
-          <td>{% if listing.website %}<a href="{{ listing.website }}" target="_blank" rel="noopener" class="text-primary">Visit ↗</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
-          <td class="text-muted">{{ listing.location }}</td>
+          <td>{% if listing.website %}<a href="{{ listing.website }}" target="_blank" rel="noopener" class="text-primary truncate" style="max-width:160px; display:inline-block;" title="{{ listing.website }}">{{ listing.website }}</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+          <td class="text-muted">{{ listing.location|default:"—" }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -119,43 +113,18 @@
   <div class="empty-state">
     <div class="empty-icon">⏳</div>
     <div class="empty-title">No results yet</div>
-    <div class="empty-desc">Results will appear here as the job runs.</div>
+    <div class="empty-desc">Results will appear here as the scraper runs.</div>
   </div>
 </div>
 {% endif %}
-
-<!-- Resume modal -->
-<div class="modal-backdrop" id="resume-modal">
-  <div class="modal">
-    <div class="modal-header">
-      <div class="modal-title">Resume Job</div>
-      <button type="button" class="btn btn-ghost btn-sm" id="resume-close">✕</button>
-    </div>
-    <div class="modal-body">
-      <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">Choose how to resume this job.</p>
-      <div style="display:grid; gap:10px;">
-        <form method="post" id="resume-continue-form" action="{% url 'resume_job' job.id %}">
-          {% csrf_token %}<input type="hidden" name="resume_mode" value="continue">
-          <button type="submit" class="btn btn-success w-full">▶ Continue from last location</button>
-        </form>
-        <form method="post" id="resume-restart-form" action="{% url 'resume_job' job.id %}">
-          {% csrf_token %}<input type="hidden" name="resume_mode" value="restart_all">
-          <button type="submit" class="btn btn-secondary w-full">↺ Restart all locations</button>
-        </form>
-      </div>
-    </div>
-  </div>
-</div>
 
 {% endblock %}
 
 {% block scripts %}
 <script>
 const jobApiUrl = "{% url 'api_job_status' job.id %}";
-let liveOn = true;
-let timer = null;
-
-const escHtml = s => (s || "").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+let liveOn = true, timer = null;
+const escHtml = s => (s||"").toString().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 
 const render = (data) => {
   if (!data || !data.job) return;
@@ -164,40 +133,30 @@ const render = (data) => {
   if (badge) { badge.className = `badge badge-${j.status}`; badge.textContent = j.status_display; }
   const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   setTxt("job-collected", j.collected + "/" + j.max_results);
-  setTxt("job-processed", j.processed);
   setTxt("job-emails", j.emails_found);
-  setTxt("job-locations-done", j.processed_locations + "/" + j.total_locations);
   const prog = data.progress || 0;
   const bar = document.getElementById("job-progress-bar");
   if (bar) bar.style.width = prog + "%";
   setTxt("job-progress-label", prog + "% complete");
-  const errBox = document.getElementById("job-error");
-  if (errBox) { errBox.style.display = j.last_error ? "" : "none"; document.getElementById("job-error-text").textContent = j.last_error || ""; }
-  const stamp = data.timestamp || new Date().toLocaleTimeString();
-  setTxt("job-updated-label", "Updated " + stamp);
-  // Logs
+  setTxt("job-updated-label", "Updated " + (data.timestamp || new Date().toLocaleTimeString()));
   const logBox = document.getElementById("job-log-box");
   if (logBox && Array.isArray(data.logs) && data.logs.length) {
     logBox.innerHTML = data.logs.map(l => `<div class="log-line log-${l.level.toLowerCase()}">${escHtml(l.created_at)} [${l.level}] ${escHtml(l.message)}</div>`).join("");
     logBox.scrollTop = logBox.scrollHeight;
   }
-  // Listings
   const tbody = document.getElementById("job-listings-body");
   if (tbody && Array.isArray(data.listings) && data.listings.length) {
     tbody.innerHTML = data.listings.map(l => `<tr>
       <td><strong>${escHtml(l.name)}</strong></td>
       <td>${l.phone ? `<span class="font-mono">${escHtml(l.phone)}</span>` : '<span class="text-muted">—</span>'}</td>
-      <td>${l.email ? `<span class="truncate text-primary" title="${escHtml(l.email)}">${escHtml(l.email)}</span>` : '<span class="text-muted">—</span>'}</td>
+      <td>${l.email ? `<span class="truncate text-primary">${escHtml(l.email)}</span>` : '<span class="text-muted">—</span>'}</td>
       <td>${l.website ? `<a href="${escHtml(l.website)}" target="_blank" rel="noopener" class="text-primary">Visit ↗</a>` : '<span class="text-muted">—</span>'}</td>
       <td class="text-muted">${escHtml(l.location)}</td>
     </tr>`).join("");
   }
 };
 
-const fetchStatus = () => {
-  fetch(jobApiUrl).then(r => r.ok ? r.json() : null).then(render).catch(() => {});
-};
-
+const fetchStatus = () => fetch(jobApiUrl).then(r => r.ok ? r.json() : null).then(render).catch(() => {});
 const setLive = (on) => {
   liveOn = on;
   const btn = document.getElementById("job-live-toggle");
@@ -205,20 +164,12 @@ const setLive = (on) => {
   if (timer) clearInterval(timer);
   if (on) timer = setInterval(fetchStatus, 6000);
 };
-
 document.getElementById("job-refresh-btn")?.addEventListener("click", fetchStatus);
 document.getElementById("job-live-toggle")?.addEventListener("click", () => setLive(!liveOn));
 setLive(true);
-
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) { if (timer) { clearInterval(timer); timer = null; } }
   else if (liveOn && !timer) { fetchStatus(); timer = setInterval(fetchStatus, 6000); }
 });
-
-// Resume modal
-const modal = document.getElementById("resume-modal");
-document.getElementById("resume-open")?.addEventListener("click", () => modal?.classList.add("show"));
-document.getElementById("resume-close")?.addEventListener("click", () => modal?.classList.remove("show"));
-modal?.addEventListener("click", e => { if (e.target === modal) modal.classList.remove("show"); });
 </script>
 {% endblock %}

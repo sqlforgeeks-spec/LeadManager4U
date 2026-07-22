@@ -8,6 +8,12 @@ urlpatterns = [
     # Dashboard
     path('', views.home, name='home'),
 
+    # Google Maps (own page)
+    path('google-maps/', views.google_maps_home, name='google_maps_home'),
+
+    # Auto-config save
+    path('auto-config/save/', views.save_auto_config, name='save_auto_config'),
+
     # Bing Maps scraping
     path('bing-maps/', views.bing_maps_home, name='bing_maps_home'),
 

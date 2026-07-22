@@ -4,13 +4,13 @@
 {% block topbar_title %}Dashboard{% endblock %}
 
 {% block topbar_actions %}
-  <a href="{% url 'leads' %}" class="btn btn-secondary btn-sm">View All Leads</a>
+  <a href="{% url 'leads' %}" class="btn btn-secondary btn-sm">👤 All Leads</a>
   <a href="{% url 'new_campaign' %}" class="btn btn-primary btn-sm">+ New Campaign</a>
 {% endblock %}
 
 {% block content %}
 
-<!-- AI Tips -->
+<!-- AI Tips Banner -->
 {% if ai_tips %}
 <div class="mb-24">
   {% for tip in ai_tips %}
@@ -22,17 +22,10 @@
 </div>
 {% endif %}
 
-<!-- Core stats -->
-<div class="stats-grid">
+<!-- ── Pipeline Stats ─────────────────────────────────────────── -->
+<div class="stats-grid mb-8">
   <div class="stat-card">
-    <div class="stat-icon blue">🎯</div>
-    <div class="stat-body">
-      <div class="stat-value" id="stat-total-jobs">{{ global_stats.total_jobs }}</div>
-      <div class="stat-label">Total Jobs</div>
-    </div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-icon green">👤</div>
+    <div class="stat-icon blue">👤</div>
     <div class="stat-body">
       <div class="stat-value">{{ global_stats.total_leads }}</div>
       <div class="stat-label">Total Leads</div>
@@ -59,15 +52,21 @@
       <div class="stat-label">Active Jobs</div>
     </div>
   </div>
+  <div class="stat-card">
+    <div class="stat-icon green">📬</div>
+    <div class="stat-body">
+      <div class="stat-value">{{ global_stats.campaigns }}</div>
+      <div class="stat-label">Campaigns</div>
+    </div>
+  </div>
 </div>
 
-<!-- Pipeline / gap stats -->
-<div class="stats-grid mb-24" style="grid-template-columns:repeat(auto-fill,minmax(155px,1fr));">
-  <a href="/leads/?starred=1" class="stat-card stat-card-link" style="text-decoration:none;">
-    <div class="stat-icon" style="background:#fffbeb;font-size:20px;">⭐</div>
+<div class="stats-grid mb-24" style="grid-template-columns:repeat(auto-fill,minmax(145px,1fr));">
+  <a href="/leads/?lead_status=following_up" class="stat-card stat-card-link" style="text-decoration:none;{% if global_stats.follow_up_today %}border:2px solid #f59e0b;{% endif %}">
+    <div class="stat-icon" style="background:#fffbeb;font-size:20px;">📅</div>
     <div class="stat-body">
-      <div class="stat-value" style="color:#d97706;">{{ global_stats.leads_starred }}</div>
-      <div class="stat-label">Starred</div>
+      <div class="stat-value" style="color:#d97706;">{{ global_stats.follow_up_today }}</div>
+      <div class="stat-label">Due Today</div>
     </div>
   </a>
   <a href="/leads/?lead_status=following_up" class="stat-card stat-card-link" style="text-decoration:none;">
@@ -77,20 +76,18 @@
       <div class="stat-label">Following Up</div>
     </div>
   </a>
-  {% if global_stats.follow_up_today %}
-  <a href="/leads/?lead_status=following_up" class="stat-card stat-card-link" style="text-decoration:none;border:2px solid #f59e0b;">
-    <div class="stat-icon" style="background:#fffbeb;font-size:20px;">📅</div>
-    <div class="stat-body">
-      <div class="stat-value" style="color:#d97706;">{{ global_stats.follow_up_today }}</div>
-      <div class="stat-label">Due Today</div>
-    </div>
-  </a>
-  {% endif %}
   <a href="/leads/?lead_status=converted" class="stat-card stat-card-link" style="text-decoration:none;">
     <div class="stat-icon" style="background:#ecfdf5;font-size:20px;">✅</div>
     <div class="stat-body">
       <div class="stat-value" style="color:#059669;">{{ global_stats.leads_converted }}</div>
       <div class="stat-label">Converted</div>
+    </div>
+  </a>
+  <a href="/leads/?starred=1" class="stat-card stat-card-link" style="text-decoration:none;">
+    <div class="stat-icon" style="background:#fffbeb;font-size:20px;">⭐</div>
+    <div class="stat-body">
+      <div class="stat-value" style="color:#d97706;">{{ global_stats.leads_starred }}</div>
+      <div class="stat-label">Starred</div>
     </div>
   </a>
   <a href="/leads/?lead_status=stopped" class="stat-card stat-card-link" style="text-decoration:none;">
@@ -123,154 +120,344 @@
   </a>
 </div>
 
-<!-- New Maps Job -->
-<div class="new-job-panel mb-24">
-  <div class="panel-title">🗺️ New Google Maps Scrape</div>
-  <div class="panel-sub">Extract business names, phones, emails, and websites from Google Maps.</div>
-  <form method="post" action="{% url 'home' %}">
-    {% csrf_token %}
-    <div class="form-grid">
-      <div class="form-group">
-        <label class="form-label">Search Phrase</label>
-        <input type="text" name="search_phrase" class="form-input" placeholder="e.g. plumber, dentist, restaurant" required>
+<!-- ── Main 2-column layout ───────────────────────────────────── -->
+<div class="dash-grid">
+
+  <!-- LEFT COLUMN -->
+  <div class="dash-col">
+
+    <!-- Who to Connect Today -->
+    <div class="card mb-24">
+      <div class="card-header">
+        <div class="card-title">🎯 Who to Connect Today</div>
+        <a href="/leads/?lead_status=following_up" class="btn btn-ghost btn-sm">View All</a>
       </div>
-      <div class="form-group">
-        <label class="form-label">Locations (comma-separated)</label>
-        <input type="text" name="locations" class="form-input" placeholder="New York, London, Sydney" required>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Max Results</label>
-        <input type="number" name="max_results" class="form-input" min="1" max="50000" value="200">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Speed</label>
-        <select name="speed" class="form-select">
-          <option value="slow">Slow (stealth)</option>
-          <option value="normal" selected>Normal</option>
-          <option value="fast">Fast (aggressive)</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Google Domain</label>
-        <select name="domain" class="form-select">
-          {% for code, name in domains %}
-            <option value="{{ code }}" {% if code == "com" %}selected{% endif %}>{{ name }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="form-group" style="justify-content:flex-end; align-items:flex-end;">
-        <div style="margin-bottom:10px;">
-          <label class="form-check">
-            <input type="checkbox" name="auto_campaign" value="1" checked>
-            Auto-create email campaign when done
-          </label>
+      {% if connect_today %}
+      <div style="padding:0 4px;">
+        {% for item in connect_today %}
+        <div class="connect-row" onclick="window.location='/leads/?q={{ item.name|urlencode }}'">
+          <div class="connect-score score-{{ item.priority }}">{{ item.score }}</div>
+          <div class="connect-info">
+            <div class="connect-name">
+              {% if item.is_starred %}⭐ {% endif %}{{ item.name }}
+              <span class="connect-status status-{{ item.lead_status }}">{{ item.lead_status_label }}</span>
+            </div>
+            <div class="connect-meta">{{ item.reason }}</div>
+          </div>
+          <div class="connect-actions">
+            {% if item.email %}
+            <a href="https://mail.google.com/mail/?view=cm&to={{ item.email }}&su=Hi+{{ item.name|urlencode }}"
+               target="_blank" class="icon-mini icon-gmail" title="Gmail" onclick="event.stopPropagation()">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+            </a>
+            {% endif %}
+            {% if item.phone %}
+            <a href="https://wa.me/{{ item.phone|cut:' '|cut:'-'|cut:'('|cut:')'|cut:'+' }}"
+               target="_blank" class="icon-mini icon-wa" title="WhatsApp" onclick="event.stopPropagation()">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+            </a>
+            {% endif %}
+          </div>
         </div>
-        <button type="submit" class="btn btn-launch">🚀 Start Scraping</button>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state" style="padding:24px;">
+        <div class="empty-icon" style="font-size:28px;">🎉</div>
+        <div class="empty-title" style="font-size:14px;">All caught up!</div>
+        <div class="empty-desc">No leads require immediate follow-up. <a href="/leads/">View all leads</a></div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Campaign Recommendations -->
+    <div class="card mb-24">
+      <div class="card-header">
+        <div class="card-title">📧 Campaign Intelligence</div>
+        <a href="{% url 'campaigns' %}" class="btn btn-ghost btn-sm">All Campaigns</a>
+      </div>
+      <div style="padding:4px 0;">
+        {% if campaign_suggestions %}
+          {% for sug in campaign_suggestions %}
+          <div class="campaign-suggest-row">
+            <div class="campaign-suggest-icon">{{ sug.icon }}</div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:600;font-size:13px;color:#1e293b;">{{ sug.title }}</div>
+              <div style="font-size:12px;color:#64748b;margin-top:2px;">{{ sug.desc }}</div>
+            </div>
+            {% if sug.action_url %}
+            <a href="{{ sug.action_url }}" class="btn btn-primary btn-sm" style="flex-shrink:0;white-space:nowrap;">{{ sug.action_label }}</a>
+            {% endif %}
+          </div>
+          {% endfor %}
+        {% else %}
+          <div style="padding:16px;text-align:center;color:#94a3b8;font-size:13px;">
+            🔍 No campaign suggestions right now. Add more leads with emails to unlock recommendations.
+          </div>
+        {% endif %}
       </div>
     </div>
-  </form>
-</div>
 
-<!-- Quick links -->
-<div class="flex gap-8 mb-24" style="flex-wrap:wrap;">
-  <a href="{% url 'search_home' %}" class="btn btn-secondary">🔍 Search Engine Scraper</a>
-  <a href="{% url 'new_campaign' %}" class="btn btn-secondary">✉️ New Email Campaign</a>
-  <a href="{% url 'leads' %}" class="btn btn-secondary">👤 Manage Leads</a>
-  <a href="{% url 'smtp_profiles' %}" class="btn btn-secondary">🔑 SMTP Profiles</a>
-  <a href="{% url 'download_csv' %}" class="btn btn-secondary">⬇️ Export All Leads</a>
-</div>
+    <!-- Recent Jobs (compact) -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">⚙️ Recent Jobs</div>
+        <div class="flex gap-8">
+          <span class="badge badge-live" id="live-badge" {% if not refresh_home %}style="display:none"{% endif %}>Live</span>
+          <button class="btn btn-ghost btn-sm" id="live-toggle">Auto-refresh: On</button>
+        </div>
+      </div>
+      {% if recent_jobs %}
+      <div class="table-wrap">
+        <table class="table" id="recent-jobs-table">
+          <thead>
+            <tr><th>#</th><th>Source</th><th>Status</th><th>Query</th><th>Collected</th><th>Actions</th></tr>
+          </thead>
+          <tbody>
+            {% for job in recent_jobs %}
+            <tr data-href="{% if job.source == 'maps' or job.source == 'bing_maps' %}{% url 'job_detail' job.id %}{% else %}{% url 'search_job_detail' job.id %}{% endif %}">
+              <td class="text-muted font-mono">#{{ job.id }}</td>
+              <td><span class="source-tag">{{ job.get_source_display }}</span></td>
+              <td><span class="badge badge-{{ job.status }}">{{ job.get_status_display }}</span></td>
+              <td style="max-width:160px"><span class="truncate" title="{{ job.search_phrase }}">{{ job.search_phrase }}</span></td>
+              <td><strong>{{ job.collected_listings }}</strong><span class="text-muted">/{{ job.max_results }}</span></td>
+              <td class="no-row-click">
+                <div class="action-group">
+                  {% if job.status == "running" %}
+                    <form method="post" action="{% url 'stop_job' job.id %}">{% csrf_token %}<button class="btn btn-danger btn-sm">Stop</button></form>
+                  {% elif job.status in "completed,completed_with_errors" %}
+                    <a href="{% url 'new_campaign' %}?job_id={{ job.id }}" class="btn btn-secondary btn-sm">✉ Campaign</a>
+                  {% elif job.status == "failed" %}
+                    <form method="post" action="{% url 'resume_job' job.id %}">{% csrf_token %}<input type="hidden" name="resume_mode" value="continue"><button class="btn btn-secondary btn-sm">Retry</button></form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty-state" style="padding:24px;">
+        <div class="empty-icon" style="font-size:28px;">🚀</div>
+        <div class="empty-title" style="font-size:14px;">No jobs yet</div>
+        <div class="empty-desc">Go to <a href="{% url 'google_maps_home' %}">Google Maps</a> or <a href="{% url 'search_home' %}">Search Engines</a> to start scraping.</div>
+      </div>
+      {% endif %}
+    </div>
 
-<!-- Recent Jobs -->
-<div class="section-header">
-  <div class="section-title">Recent Jobs</div>
-  <div class="flex gap-8 items-center">
-    <span class="badge badge-live" id="live-badge" {% if not refresh_home %}style="display:none"{% endif %}>Live</span>
-    <button type="button" class="btn btn-secondary btn-sm" id="refresh-btn">Refresh</button>
-    <button type="button" class="btn btn-ghost btn-sm" id="live-toggle">Auto-refresh: On</button>
-  </div>
-</div>
+  </div><!-- /left -->
 
-{% if recent_jobs %}
-<div class="toolbar">
-  <div class="toolbar-search">
-    <input type="text" id="jobs-search" class="form-input" placeholder="Search jobs…" oninput="filterTable('recent-jobs-table', this.value)">
-  </div>
-</div>
+  <!-- RIGHT COLUMN -->
+  <div class="dash-col">
 
-<div class="card">
-  <div class="table-wrap">
-    <table class="table" id="recent-jobs-table">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Source</th>
-          <th>Status</th>
-          <th>Query</th>
-          <th>Speed</th>
-          <th>Collected</th>
-          <th>Emails</th>
-          <th>Downloads</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="recent-jobs-body">
-        {% for job in recent_jobs %}
-        <tr data-href="{% if job.source == 'maps' %}{% url 'job_detail' job.id %}{% else %}{% url 'search_job_detail' job.id %}{% endif %}">
-          <td class="text-muted font-mono">#{{ job.id }}</td>
-          <td><span class="source-tag">{{ job.get_source_display }}</span></td>
-          <td><span class="badge badge-{{ job.status }}">{{ job.get_status_display }}</span></td>
-          <td style="max-width:200px"><span class="truncate" title="{{ job.search_phrase }}">{{ job.search_phrase }}</span></td>
-          <td class="text-muted">{{ job.get_speed_display }}</td>
-          <td><strong>{{ job.collected_listings }}</strong><span class="text-muted">/{{ job.max_results }}</span></td>
-          <td class="text-success">{{ job.emails_found }}</td>
-          <td class="no-row-click">
-            <div class="download-strip">
-              <a class="download-btn" href="{% url 'download_job_csv' job.id %}">⬇ All</a>
-              <a class="download-btn" href="{% url 'download_job_email_csv' job.id %}">✉ Email</a>
-              <a class="download-btn" href="{% url 'download_job_phone_csv' job.id %}">📞 Phone</a>
+    <!-- Auto-Mode Panel -->
+    <div class="card mb-24 automode-card">
+      <div class="card-header">
+        <div class="card-title">🤖 Auto-Mode</div>
+        <span class="automode-badge {% if auto_scrape_on or auto_campaign_on %}active{% endif %}">
+          {% if auto_scrape_on or auto_campaign_on %}🟢 Active{% else %}⚪ Off{% endif %}
+        </span>
+      </div>
+      <form method="post" action="{% url 'save_auto_config' %}">
+        {% csrf_token %}
+
+        <!-- Auto-Scrape -->
+        <div class="automode-section">
+          <div class="automode-section-header">
+            <label class="automode-toggle-label">
+              <div class="toggle-wrap">
+                <input type="checkbox" name="auto_scrape_enabled" id="auto-scrape-toggle" {% if auto_scrape_on %}checked{% endif %} onchange="toggleSection('scrape-settings', this.checked)">
+                <span class="toggle-slider"></span>
+              </div>
+              <span style="font-weight:600;font-size:13px;color:#1e293b;">🔄 Auto-Scrape</span>
+            </label>
+            <span style="font-size:11px;color:#94a3b8;">Runs on schedule, finds new leads automatically</span>
+          </div>
+          <div id="scrape-settings" style="{% if not auto_scrape_on %}display:none;{% endif %}margin-top:12px;">
+            <div class="form-group mb-8">
+              <label class="form-label">Search Phrase</label>
+              <input type="text" name="auto_scrape_phrase" class="form-input" value="{{ auto_config.auto_scrape_phrase }}" placeholder="e.g. dentist, plumber">
             </div>
-          </td>
-          <td class="no-row-click">
-            <div class="action-group">
-              {% if job.status == "running" %}
-                <form method="post" action="{% url 'pause_job' job.id %}">{% csrf_token %}<button type="submit" class="btn btn-secondary btn-sm">Pause</button></form>
-                <form method="post" action="{% url 'stop_job' job.id %}">{% csrf_token %}<button type="submit" class="btn btn-danger btn-sm">Stop</button></form>
-              {% elif job.status == "paused" %}
-                <form method="post" action="{% url 'resume_job' job.id %}">{% csrf_token %}<input type="hidden" name="resume_mode" value="continue"><button type="submit" class="btn btn-success btn-sm">Resume</button></form>
-                <form method="post" action="{% url 'stop_job' job.id %}">{% csrf_token %}<button type="submit" class="btn btn-danger btn-sm">Stop</button></form>
-              {% elif job.status == "queued" %}
-                <form method="post" action="{% url 'stop_job' job.id %}">{% csrf_token %}<button type="submit" class="btn btn-danger btn-sm">Cancel</button></form>
-              {% elif job.status == "failed" %}
-                <form method="post" action="{% url 'resume_job' job.id %}">{% csrf_token %}<input type="hidden" name="resume_mode" value="continue"><button type="submit" class="btn btn-secondary btn-sm">Retry</button></form>
-                <form method="post" action="{% url 'delete_job' job.id %}" onsubmit="return confirm('Delete job #{{ job.id }} and all its leads?')">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">🗑</button></form>
-              {% else %}
-                {% if job.status in "completed,completed_with_errors" %}
-                  <a href="{% url 'new_campaign' %}?job_id={{ job.id }}" class="btn btn-secondary btn-sm">✉ Campaign</a>
-                {% endif %}
-                <form method="post" action="{% url 'delete_job' job.id %}" onsubmit="return confirm('Delete job #{{ job.id }} and all its leads?')">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">🗑</button></form>
+            <div class="form-group mb-8">
+              <label class="form-label">Locations (comma-separated)</label>
+              <input type="text" name="auto_scrape_locations" class="form-input" value="{{ auto_config.auto_scrape_locations }}" placeholder="London, New York">
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <div class="form-group mb-8">
+                <label class="form-label">Max Results / Run</label>
+                <input type="number" name="auto_scrape_max_results" class="form-input" value="{{ auto_config.auto_scrape_max_results }}" min="10" max="5000">
+              </div>
+              <div class="form-group mb-8">
+                <label class="form-label">Every (hours)</label>
+                <select name="auto_scrape_interval_hours" class="form-select">
+                  {% for h in scrape_interval_options %}
+                  <option value="{{ h }}" {% if h == auto_config.auto_scrape_interval_hours %}selected{% endif %}>{{ h }}h</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+            <div class="form-group mb-0">
+              <label class="form-label">Source</label>
+              <select name="auto_scrape_source" class="form-select">
+                <option value="maps" {% if auto_config.auto_scrape_source == 'maps' %}selected{% endif %}>🗺️ Google Maps</option>
+                <option value="bing_maps" {% if auto_config.auto_scrape_source == 'bing_maps' %}selected{% endif %}>🅱️ Bing Maps</option>
+                <option value="duckduckgo" {% if auto_config.auto_scrape_source == 'duckduckgo' %}selected{% endif %}>🦆 DuckDuckGo</option>
+              </select>
+            </div>
+            {% if auto_config.auto_scrape_last_run %}
+            <div style="font-size:11px;color:#64748b;margin-top:8px;">
+              Last run: {{ auto_config.auto_scrape_last_run|date:"M d, H:i" }} •
+              {% if auto_config.auto_scrape_next_run %}Next: {{ auto_config.auto_scrape_next_run|date:"M d, H:i" }}{% endif %}
+            </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div style="border-top:1px solid #f1f5f9;margin:12px -16px;"></div>
+
+        <!-- Auto-Campaign -->
+        <div class="automode-section">
+          <div class="automode-section-header">
+            <label class="automode-toggle-label">
+              <div class="toggle-wrap">
+                <input type="checkbox" name="auto_campaign_enabled" id="auto-campaign-toggle" {% if auto_campaign_on %}checked{% endif %} onchange="toggleSection('campaign-settings', this.checked)">
+                <span class="toggle-slider"></span>
+              </div>
+              <span style="font-weight:600;font-size:13px;color:#1e293b;">📧 Auto-Campaign</span>
+            </label>
+            <span style="font-size:11px;color:#94a3b8;">Auto-send emails to new leads after scrape completes</span>
+          </div>
+          <div id="campaign-settings" style="{% if not auto_campaign_on %}display:none;{% endif %}margin-top:12px;">
+            <div class="form-group mb-8">
+              <label class="form-label">SMTP Profile</label>
+              <select name="auto_campaign_smtp_profile" class="form-select">
+                <option value="">— Select SMTP Profile —</option>
+                {% for smtp in smtp_profiles %}
+                <option value="{{ smtp.id }}" {% if auto_config.auto_campaign_smtp_profile_id == smtp.id %}selected{% endif %}>{{ smtp.name }}</option>
+                {% endfor %}
+              </select>
+              {% if not smtp_profiles %}
+              <div style="font-size:11px;color:#ef4444;margin-top:4px;">⚠ <a href="{% url 'smtp_profiles' %}">Add an SMTP profile</a> first</div>
               {% endif %}
             </div>
-          </td>
-        </tr>
+            <div class="form-group mb-8">
+              <label class="form-label">From Name</label>
+              <input type="text" name="auto_campaign_from_name" class="form-input" value="{{ auto_config.auto_campaign_from_name }}" placeholder="Your Name / Company">
+            </div>
+            <div class="form-group mb-8">
+              <label class="form-label">From Email</label>
+              <input type="email" name="auto_campaign_from_email" class="form-input" value="{{ auto_config.auto_campaign_from_email }}" placeholder="you@example.com">
+            </div>
+            <div class="form-group mb-8">
+              <label class="form-label">Subject</label>
+              <input type="text" name="auto_campaign_subject" class="form-input" value="{{ auto_config.auto_campaign_subject }}">
+            </div>
+            <div class="form-group mb-8">
+              <label class="form-label">Body</label>
+              <textarea name="auto_campaign_body" class="form-input" rows="4" style="resize:vertical;">{{ auto_config.auto_campaign_body }}</textarea>
+            </div>
+            <div class="form-group mb-0">
+              <label class="form-label">Send after scrape completes (minutes delay)</label>
+              <input type="number" name="auto_campaign_delay_minutes" class="form-input" value="{{ auto_config.auto_campaign_delay_minutes }}" min="0" max="1440">
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:16px;">
+          <button type="submit" class="btn btn-primary" style="width:100%;">💾 Save Auto-Mode Settings</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Top Leads by AI Score -->
+    <div class="card mb-24">
+      <div class="card-header">
+        <div class="card-title">🏆 Top Scored Leads</div>
+        <a href="/leads/?starred=1" class="btn btn-ghost btn-sm">Starred</a>
+      </div>
+      {% if top_leads %}
+      <div>
+        {% for item in top_leads %}
+        <div class="connect-row" onclick="window.location='/leads/?q={{ item.name|urlencode }}'">
+          <div class="connect-score score-{{ item.priority }}">{{ item.score }}</div>
+          <div class="connect-info">
+            <div class="connect-name">{% if item.is_starred %}⭐ {% endif %}{{ item.name }}</div>
+            <div class="connect-meta">
+              {% if item.email %}✉ {{ item.email|truncatechars:28 }}{% endif %}
+              {% if item.phone %}  📞 {{ item.phone }}{% endif %}
+            </div>
+          </div>
+          <span class="connect-status status-{{ item.lead_status }}">{{ item.lead_status_label }}</span>
+        </div>
         {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-{% else %}
-<div class="card">
-  <div class="empty-state">
-    <div class="empty-icon">🚀</div>
-    <div class="empty-title">No jobs yet</div>
-    <div class="empty-desc">Use the form above to start your first scraping job.</div>
-  </div>
-</div>
-{% endif %}
+      </div>
+      {% else %}
+      <div style="padding:16px;text-align:center;color:#94a3b8;font-size:13px;">Add more leads to see AI scores.</div>
+      {% endif %}
+    </div>
+
+    <!-- Follow-Up Pipeline -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">📋 Follow-Up Pipeline</div>
+        <a href="/leads/?lead_status=following_up" class="btn btn-ghost btn-sm">View All</a>
+      </div>
+      <div class="pipeline-bars">
+        <div class="pipeline-row">
+          <div class="pipeline-label">Due Today / Overdue</div>
+          <div class="pipeline-bar-wrap">
+            <div class="pipeline-bar bar-danger" style="width:{% widthratio global_stats.follow_up_today global_stats.total_leads|default:1 100 %}%"></div>
+          </div>
+          <div class="pipeline-val danger">{{ global_stats.follow_up_today }}</div>
+        </div>
+        <div class="pipeline-row">
+          <div class="pipeline-label">Following Up</div>
+          <div class="pipeline-bar-wrap">
+            <div class="pipeline-bar bar-blue" style="width:{% widthratio global_stats.leads_following_up global_stats.total_leads|default:1 100 %}%"></div>
+          </div>
+          <div class="pipeline-val blue">{{ global_stats.leads_following_up }}</div>
+        </div>
+        <div class="pipeline-row">
+          <div class="pipeline-label">Converted</div>
+          <div class="pipeline-bar-wrap">
+            <div class="pipeline-bar bar-success" style="width:{% widthratio global_stats.leads_converted global_stats.total_leads|default:1 100 %}%"></div>
+          </div>
+          <div class="pipeline-val success">{{ global_stats.leads_converted }}</div>
+        </div>
+        <div class="pipeline-row">
+          <div class="pipeline-label">Stopped</div>
+          <div class="pipeline-bar-wrap">
+            <div class="pipeline-bar bar-muted" style="width:{% widthratio global_stats.leads_stopped global_stats.total_leads|default:1 100 %}%"></div>
+          </div>
+          <div class="pipeline-val muted">{{ global_stats.leads_stopped }}</div>
+        </div>
+      </div>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f1f5f9;">
+        <div style="font-size:11px;color:#94a3b8;text-align:center;">
+          {% if global_stats.total_leads %}
+            Conversion rate: <strong style="color:#059669;">{% widthratio global_stats.leads_converted global_stats.total_leads 100 %}%</strong> of all leads
+          {% else %}
+            No leads yet — start scraping to build your pipeline.
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /right -->
+</div><!-- /dash-grid -->
 
 {% endblock %}
 
 {% block scripts %}
 <script>
+// Toggle auto-mode sections
+function toggleSection(id, show) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = show ? '' : 'none';
+}
+
+// Live refresh for active jobs
 const apiUrl = "{% url 'api_recent_jobs' %}";
 let liveOn = {{ refresh_home|yesno:"true,false" }};
 let timer = null;
@@ -278,10 +465,9 @@ let timer = null;
 const refresh = () => {
   fetch(apiUrl).then(r => r.ok ? r.json() : null).then(data => {
     if (!data) return;
-    document.getElementById("stat-active-jobs").textContent = data.stats.running + data.stats.queued;
-    if (data.stats.running > 0 || data.stats.queued > 0) {
-      window.location.reload();
-    }
+    const active = data.stats.running + data.stats.queued;
+    document.getElementById("stat-active-jobs").textContent = active;
+    if (active > 0) window.location.reload();
   }).catch(() => {});
 };
 
@@ -295,9 +481,7 @@ const setLive = (on) => {
   if (on) timer = setInterval(refresh, 12000);
 };
 
-document.getElementById("refresh-btn")?.addEventListener("click", () => window.location.reload());
 document.getElementById("live-toggle")?.addEventListener("click", () => setLive(!liveOn));
-
 if (liveOn) setLive(true);
 
 document.addEventListener("visibilitychange", () => {

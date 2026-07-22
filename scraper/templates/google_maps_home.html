@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}Google Maps Scraper{% endblock %}
+{% block topbar_title %}Google Maps Scraper{% endblock %}
+
+{% block topbar_actions %}
+  <a href="{% url 'leads' %}" class="btn btn-secondary btn-sm">👤 All Leads</a>
+  <a href="{% url 'new_campaign' %}" class="btn btn-primary btn-sm">+ New Campaign</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- New Maps Job -->
+<div class="new-job-panel mb-24">
+  <div class="panel-title">🗺️ New Google Maps Scrape</div>
+  <div class="panel-sub">Extract business names, phones, emails, and websites from Google Maps.</div>
+  <form method="post" action="{% url 'google_maps_home' %}">
+    {% csrf_token %}
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Search Phrase</label>
+        <input type="text" name="search_phrase" class="form-input" placeholder="e.g. plumber, dentist, restaurant" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Locations (comma-separated)</label>
+        <input type="text" name="locations" class="form-input" placeholder="New York, London, Sydney" required>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Max Results</label>
+        <input type="number" name="max_results" class="form-input" min="1" max="50000" value="200">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Speed</label>
+        <select name="speed" class="form-select">
+          <option value="slow">Slow (stealth)</option>
+          <option value="normal" selected>Normal</option>
+          <option value="fast">Fast (aggressive)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Google Domain</label>
+        <select name="domain" class="form-select">
+          {% for code, name in domains %}
+            <option value="{{ code }}" {% if code == "com" %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group" style="justify-content:flex-end; align-items:flex-end;">
+        <div style="margin-bottom:10px;">
+          <label class="form-check">
+            <input type="checkbox" name="auto_campaign" value="1" checked>
+            Auto-create email campaign when done
+          </label>
+        </div>
+        <button type="submit" class="btn btn-launch">🚀 Start Scraping</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<!-- Recent Jobs -->
+<div class="section-header">
+  <div class="section-title">Recent Google Maps Jobs</div>
+  <div class="flex gap-8 items-center">
+    <span class="badge badge-live" id="live-badge" {% if not refresh_home %}style="display:none"{% endif %}>Live</span>
+    <button type="button" class="btn btn-secondary btn-sm" id="refresh-btn">Refresh</button>
+    <button type="button" class="btn btn-ghost btn-sm" id="live-toggle">Auto-refresh: On</button>
+  </div>
+</div>
+
+{% if recent_jobs %}
+<div class="card">
+  <div class="table-wrap">
+    <table class="table" id="recent-jobs-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Status</th>
+          <th>Query</th>
+          <th>Speed</th>
+          <th>Collected</th>
+          <th>Emails</th>
+          <th>Downloads</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="recent-jobs-body">
+        {% for job in recent_jobs %}
+        <tr data-href="{% url 'job_detail' job.id %}">
+          <td class="text-muted font-mono">#{{ job.id }}</td>
+          <td><span class="badge badge-{{ job.status }}">{{ job.get_status_display }}</span></td>
+          <td style="max-width:200px"><span class="truncate" title="{{ job.search_phrase }}">{{ job.search_phrase }}</span></td>
+          <td class="text-muted">{{ job.get_speed_display }}</td>
+          <td><strong>{{ job.collected_listings }}</strong><span class="text-muted">/{{ job.max_results }}</span></td>
+          <td class="text-success">{{ job.emails_found }}</td>
+          <td class="no-row-click">
+            <div class="download-strip">
+              <a class="download-btn" href="{% url 'download_job_csv' job.id %}">⬇ All</a>
+              <a class="download-btn" href="{% url 'download_job_email_csv' job.id %}">✉ Email</a>
+              <a class="download-btn" href="{% url 'download_job_phone_csv' job.id %}">📞 Phone</a>
+            </div>
+          </td>
+          <td class="no-row-click">
+            <div class="action-group">
+              {% if job.status == "running" %}
+                <form method="post" action="{% url 'pause_job' job.id %}">{% csrf_token %}<button type="submit" class="btn btn-secondary btn-sm">Pause</button></form>
+                <form method="post" action="{% url 'stop_job' job.id %}">{% csrf_token %}<button type="submit" class="btn btn-danger btn-sm">Stop</button></form>
+              {% elif job.status == "paused" %}
+                <form method="post" action="{% url 'resume_job' job.id %}">{% csrf_token %}<input type="hidden" name="resume_mode" value="continue"><button type="submit" class="btn btn-success btn-sm">Resume</button></form>
+                <form method="post" action="{% url 'stop_job' job.id %}">{% csrf_token %}<button type="submit" class="btn btn-danger btn-sm">Stop</button></form>
+              {% elif job.status == "queued" %}
+                <form method="post" action="{% url 'stop_job' job.id %}">{% csrf_token %}<button type="submit" class="btn btn-danger btn-sm">Cancel</button></form>
+              {% elif job.status == "failed" %}
+                <form method="post" action="{% url 'resume_job' job.id %}">{% csrf_token %}<input type="hidden" name="resume_mode" value="continue"><button type="submit" class="btn btn-secondary btn-sm">Retry</button></form>
+                <form method="post" action="{% url 'delete_job' job.id %}" onsubmit="return confirm('Delete job #{{ job.id }} and all its leads?')">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">🗑</button></form>
+              {% else %}
+                {% if job.status in "completed,completed_with_errors" %}
+                  <a href="{% url 'new_campaign' %}?job_id={{ job.id }}" class="btn btn-secondary btn-sm">✉ Campaign</a>
+                {% endif %}
+                <form method="post" action="{% url 'delete_job' job.id %}" onsubmit="return confirm('Delete job #{{ job.id }} and all its leads?')">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">🗑</button></form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="empty-state">
+    <div class="empty-icon">🗺️</div>
+    <div class="empty-title">No Google Maps jobs yet</div>
+    <div class="empty-desc">Use the form above to start your first scraping job.</div>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const apiUrl = "{% url 'api_recent_jobs' %}";
+let liveOn = {{ refresh_home|yesno:"true,false" }};
+let timer = null;
+
+const refresh = () => {
+  fetch(apiUrl).then(r => r.ok ? r.json() : null).then(data => {
+    if (!data) return;
+    if (data.stats.running > 0 || data.stats.queued > 0) {
+      window.location.reload();
+    }
+  }).catch(() => {});
+};
+
+const setLive = (on) => {
+  liveOn = on;
+  const btn = document.getElementById("live-toggle");
+  const badge = document.getElementById("live-badge");
+  if (btn) btn.textContent = `Auto-refresh: ${on ? "On" : "Off"}`;
+  if (badge) badge.style.display = on ? "" : "none";
+  if (timer) clearInterval(timer);
+  if (on) timer = setInterval(refresh, 12000);
+};
+
+document.getElementById("refresh-btn")?.addEventListener("click", () => window.location.reload());
+document.getElementById("live-toggle")?.addEventListener("click", () => setLive(!liveOn));
+if (liveOn) setLive(true);
+</script>
+{% endblock %}

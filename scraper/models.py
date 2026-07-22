@@ -260,3 +260,42 @@ class EmailSend(models.Model):
 
     def __str__(self):
         return f"{self.campaign} → {self.listing}"
+
+
+class AutoConfig(models.Model):
+    """Singleton-style table for global auto-mode settings."""
+    # Auto-scrape
+    auto_scrape_enabled = models.BooleanField(default=False)
+    auto_scrape_phrase = models.CharField(max_length=255, blank=True, default="")
+    auto_scrape_locations = models.TextField(blank=True, default="", help_text="Comma-separated locations")
+    auto_scrape_max_results = models.PositiveIntegerField(default=200)
+    auto_scrape_interval_hours = models.PositiveIntegerField(default=24, help_text="How often to run auto-scrape (hours)")
+    auto_scrape_source = models.CharField(max_length=20, default="maps")  # maps / bing_maps / duckduckgo
+    auto_scrape_last_run = models.DateTimeField(null=True, blank=True)
+    auto_scrape_next_run = models.DateTimeField(null=True, blank=True)
+
+    # Auto-campaign
+    auto_campaign_enabled = models.BooleanField(default=False)
+    auto_campaign_smtp_profile = models.ForeignKey(
+        SmtpProfile, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="auto_configs",
+    )
+    auto_campaign_subject = models.CharField(max_length=500, blank=True, default="Quick question for {name}")
+    auto_campaign_body = models.TextField(blank=True, default="Hi {name},\n\nI came across your business and wanted to reach out.\n\nBest,\nYour Name")
+    auto_campaign_from_name = models.CharField(max_length=255, blank=True, default="")
+    auto_campaign_from_email = models.EmailField(blank=True, default="")
+    auto_campaign_delay_minutes = models.PositiveIntegerField(default=30, help_text="Minutes to wait after job completes before sending")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Auto Config"
+
+    def __str__(self):
+        return "Auto Config"
+
+    @classmethod
+    def get(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj

@@ -11,7 +11,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from .models import (
     BusinessListing, ScrapeJob, JobLog, EmailCampaign, EmailSend,
-    SmtpProfile, ContactAttempt
+    SmtpProfile, ContactAttempt, AutoConfig
 )
 from .scraper import scrape_google_maps, StopScrape, create_shared_drivers
 from .search_scraper import scrape_search_engine, StopScrape as SearchStopScrape
@@ -47,12 +47,17 @@ def _start_scheduler():
 
 
 def _scheduler_loop():
-    """Background thread: checks every 60s for campaigns ready to send."""
+    """Background thread: checks every 60s for:
+    - Scheduled email campaigns ready to send
+    - Auto-scrape jobs due to run
+    """
     time.sleep(10)
     while True:
         try:
             close_old_connections()
             now = timezone.now()
+
+            # ── Scheduled campaigns ──────────────────────────────────────────
             ready = EmailCampaign.objects.filter(
                 status="scheduled",
                 scheduled_at__lte=now,
@@ -61,6 +66,57 @@ def _scheduler_loop():
                 campaign.status = "draft"
                 campaign.save(update_fields=["status"])
                 launch_campaign(campaign.id)
+
+            # ── Auto-scrape ──────────────────────────────────────────────────
+            try:
+                cfg = AutoConfig.objects.get(pk=1)
+                if (
+                    cfg.auto_scrape_enabled
+                    and cfg.auto_scrape_phrase.strip()
+                    and cfg.auto_scrape_locations.strip()
+                    and cfg.auto_scrape_next_run
+                    and cfg.auto_scrape_next_run <= now
+                ):
+                    from datetime import timedelta
+                    locations = [l.strip() for l in cfg.auto_scrape_locations.split(",") if l.strip()]
+                    source = cfg.auto_scrape_source or "maps"
+
+                    # Create the job
+                    job = ScrapeJob.objects.create(
+                        status="queued",
+                        source=source,
+                        search_phrase=cfg.auto_scrape_phrase,
+                        locations=cfg.auto_scrape_locations,
+                        max_results=cfg.auto_scrape_max_results,
+                        total_locations=len(locations),
+                        speed="normal",
+                    )
+
+                    auto_campaign = cfg.auto_campaign_enabled
+                    if source == "bing_maps":
+                        threading.Thread(
+                            target=run_bing_maps_scrape,
+                            args=(job.id, cfg.auto_scrape_phrase, locations, cfg.auto_scrape_max_results, auto_campaign),
+                            daemon=True,
+                        ).start()
+                    elif source in {"google", "bing", "yahoo", "duckduckgo", "yandex", "ecosia", "ask"}:
+                        threading.Thread(target=run_search_scrape, args=(job.id, True), daemon=True).start()
+                    else:
+                        threading.Thread(
+                            target=run_scrape,
+                            args=(job.id, cfg.auto_scrape_phrase, locations, "com", cfg.auto_scrape_max_results, auto_campaign),
+                            daemon=True,
+                        ).start()
+
+                    # Update schedule
+                    cfg.auto_scrape_last_run = now
+                    cfg.auto_scrape_next_run = now + timedelta(hours=cfg.auto_scrape_interval_hours)
+                    cfg.save(update_fields=["auto_scrape_last_run", "auto_scrape_next_run"])
+            except AutoConfig.DoesNotExist:
+                pass
+            except Exception:
+                pass
+
         except Exception:
             pass
         time.sleep(60)
@@ -211,32 +267,256 @@ def _get_notifications():
     return notifs
 
 
+# ─── AI Dashboard helpers ─────────────────────────────────────────────────────
+
+def _get_connect_today(limit=8):
+    """Return top leads to contact today, ranked by urgency + AI score."""
+    from datetime import date
+    from .ai_engine import score_lead
+    today = date.today()
+
+    STATUS_LABELS = {
+        "fresh": "Fresh",
+        "following_up": "Following Up",
+        "converted": "Converted",
+        "stopped": "Stopped",
+    }
+
+    candidates = []
+
+    # 1. Starred leads not yet converted/stopped
+    starred = BusinessListing.objects.filter(
+        is_starred=True
+    ).exclude(lead_status__in=["converted", "stopped"]).order_by("-scraped_at")[:30]
+
+    # 2. Follow-up due today or overdue
+    due = BusinessListing.objects.filter(
+        lead_status="following_up",
+        follow_up_date__lte=today,
+    ).exclude(lead_status__in=["converted", "stopped"]).order_by("follow_up_date")[:30]
+
+    # 3. Fresh leads with email (highest conversion potential)
+    fresh = BusinessListing.objects.filter(
+        lead_status="fresh",
+    ).exclude(email="").order_by("-scraped_at")[:30]
+
+    seen_ids = set()
+    for qs in [starred, due, fresh]:
+        for lead in qs:
+            if lead.id in seen_ids:
+                continue
+            seen_ids.add(lead.id)
+            score = score_lead({
+                "name": lead.name, "email": lead.email,
+                "phone": lead.phone, "website": lead.website,
+                "address": lead.address,
+            })
+
+            # Build reason string
+            reasons = []
+            if lead.is_starred:
+                reasons.append("starred priority lead")
+            if lead.follow_up_date and lead.follow_up_date <= today:
+                overdue = (today - lead.follow_up_date).days
+                reasons.append(f"follow-up {'overdue ' + str(overdue) + 'd' if overdue > 0 else 'due today'}")
+            if lead.lead_status == "fresh":
+                reasons.append("new — first contact")
+            contact_count = lead.contact_attempts.count()
+            if contact_count:
+                reasons.append(f"{contact_count} prior contact{'s' if contact_count > 1 else ''}")
+            if lead.email:
+                reasons.append("✉ has email")
+            if lead.phone:
+                reasons.append("📞 has phone")
+
+            priority = "high" if score >= 70 else ("mid" if score >= 40 else "low")
+            candidates.append({
+                "id": lead.id,
+                "name": lead.name,
+                "email": lead.email,
+                "phone": lead.phone,
+                "lead_status": lead.lead_status,
+                "lead_status_label": STATUS_LABELS.get(lead.lead_status, lead.lead_status),
+                "is_starred": lead.is_starred,
+                "score": score,
+                "priority": priority,
+                "reason": " · ".join(reasons) if reasons else "Fresh lead",
+                "follow_up_date": lead.follow_up_date,
+            })
+
+    # Sort: starred first, then by score desc
+    candidates.sort(key=lambda x: (-int(x["is_starred"]), -x["score"]))
+    return candidates[:limit]
+
+
+def _get_top_leads(limit=6):
+    """Return highest AI-scored leads for the dashboard."""
+    from .ai_engine import score_lead
+    STATUS_LABELS = {"fresh": "Fresh", "following_up": "Following Up", "converted": "Converted", "stopped": "Stopped"}
+    leads = list(BusinessListing.objects.exclude(lead_status__in=["stopped"]).order_by("-is_starred", "-scraped_at")[:100])
+    scored = []
+    for lead in leads:
+        score = score_lead({
+            "name": lead.name, "email": lead.email,
+            "phone": lead.phone, "website": lead.website, "address": lead.address,
+        })
+        priority = "high" if score >= 70 else ("mid" if score >= 40 else "low")
+        scored.append({
+            "id": lead.id, "name": lead.name, "email": lead.email, "phone": lead.phone,
+            "is_starred": lead.is_starred, "lead_status": lead.lead_status,
+            "lead_status_label": STATUS_LABELS.get(lead.lead_status, lead.lead_status),
+            "score": score, "priority": priority,
+        })
+    scored.sort(key=lambda x: (-int(x["is_starred"]), -x["score"]))
+    return scored[:limit]
+
+
+def _get_campaign_suggestions(stats):
+    """Return AI-generated campaign action suggestions."""
+    suggestions = []
+
+    # Unsent leads with email
+    unsent = BusinessListing.objects.filter(lead_status="fresh").exclude(email="").count()
+    if unsent > 0:
+        suggestions.append({
+            "icon": "✉️",
+            "title": f"{unsent} fresh leads ready to email",
+            "desc": "These leads haven't been contacted yet. Start a campaign now.",
+            "action_label": "Create Campaign",
+            "action_url": "/campaigns/new/",
+        })
+
+    # Draft campaigns
+    drafts = EmailCampaign.objects.filter(status="draft").count()
+    if drafts:
+        suggestions.append({
+            "icon": "📝",
+            "title": f"{drafts} campaign{'s' if drafts > 1 else ''} still in draft",
+            "desc": "Review and send your drafted campaigns.",
+            "action_label": "View Campaigns",
+            "action_url": "/campaigns/",
+        })
+
+    # Follow-ups due — suggest re-engage campaign
+    from datetime import date
+    overdue = BusinessListing.objects.filter(
+        lead_status="following_up",
+        follow_up_date__lte=date.today(),
+    ).count()
+    if overdue:
+        suggestions.append({
+            "icon": "🔔",
+            "title": f"{overdue} follow-up{'s' if overdue > 1 else ''} overdue — send a re-engage email",
+            "desc": "Reach out to leads you marked for follow-up.",
+            "action_label": "View Follow-Ups",
+            "action_url": "/leads/?lead_status=following_up",
+        })
+
+    # Leads with no email — suggest search-scrape to find emails
+    no_email = stats.get("no_email", 0)
+    if no_email > 20:
+        suggestions.append({
+            "icon": "🔍",
+            "title": f"{no_email} leads are missing email addresses",
+            "desc": "Use Search Engine Scraper to find contact emails.",
+            "action_label": "Search Scraper",
+            "action_url": "/search/",
+        })
+
+    return suggestions[:4]
+
+
 # ─── Dashboard ───────────────────────────────────────────────────────────────
 
 def home(request):
-    if request.method == "POST":
-        return _start_maps_job(request)
-
-    recent_jobs = list(ScrapeJob.objects.order_by("-created_at")[:12])
-    refresh_home = any(j.status in {"queued", "running", "paused"} for j in recent_jobs)
-    job_stats = {
-        "total": ScrapeJob.objects.count(),
-        "queued": ScrapeJob.objects.filter(status="queued").count(),
-        "running": ScrapeJob.objects.filter(status="running").count(),
-        "paused": ScrapeJob.objects.filter(status="paused").count(),
-        "completed": ScrapeJob.objects.filter(status__in=["completed", "completed_with_errors"]).count(),
-    }
     stats = _global_stats()
+    recent_jobs = list(ScrapeJob.objects.order_by("-created_at")[:8])
+    refresh_home = any(j.status in {"queued", "running", "paused"} for j in recent_jobs)
+    auto_config = AutoConfig.get()
+    smtp_profiles = list(SmtpProfile.objects.all())
+
     return render(request, "home.html", {
-        "domains": DOMAINS,
         "recent_jobs": recent_jobs,
         "refresh_home": refresh_home,
-        "job_stats": job_stats,
         "global_stats": stats,
         "ai_tips": _ai_tips(stats),
         "notifications": _get_notifications(),
         "active_page": "dashboard",
+        "connect_today": _get_connect_today(),
+        "top_leads": _get_top_leads(),
+        "campaign_suggestions": _get_campaign_suggestions(stats),
+        "auto_config": auto_config,
+        "auto_scrape_on": auto_config.auto_scrape_enabled,
+        "auto_campaign_on": auto_config.auto_campaign_enabled,
+        "smtp_profiles": smtp_profiles,
+        "scrape_interval_options": [1, 2, 4, 6, 8, 12, 24, 48, 72, 168],
     })
+
+
+# ─── Google Maps Home (separate page) ────────────────────────────────────────
+
+def google_maps_home(request):
+    if request.method == "POST":
+        return _start_maps_job(request)
+
+    recent_jobs = list(ScrapeJob.objects.filter(source="maps").order_by("-created_at")[:12])
+    refresh_home = any(j.status in {"queued", "running", "paused"} for j in recent_jobs)
+    return render(request, "google_maps_home.html", {
+        "domains": DOMAINS,
+        "recent_jobs": recent_jobs,
+        "refresh_home": refresh_home,
+        "global_stats": _global_stats(),
+        "notifications": _get_notifications(),
+        "active_page": "maps",
+    })
+
+
+# ─── Auto-Config save ─────────────────────────────────────────────────────────
+
+@require_POST
+def save_auto_config(request):
+    from django.utils import timezone as tz
+    from datetime import timedelta
+    cfg = AutoConfig.get()
+
+    cfg.auto_scrape_enabled = "auto_scrape_enabled" in request.POST
+    cfg.auto_scrape_phrase = request.POST.get("auto_scrape_phrase", "").strip()
+    cfg.auto_scrape_locations = request.POST.get("auto_scrape_locations", "").strip()
+    try:
+        cfg.auto_scrape_max_results = max(10, min(5000, int(request.POST.get("auto_scrape_max_results", 200))))
+    except ValueError:
+        pass
+    try:
+        cfg.auto_scrape_interval_hours = max(1, int(request.POST.get("auto_scrape_interval_hours", 24)))
+    except ValueError:
+        pass
+    cfg.auto_scrape_source = request.POST.get("auto_scrape_source", "maps").strip()
+
+    # Calculate next run if enabling
+    if cfg.auto_scrape_enabled and not cfg.auto_scrape_next_run:
+        cfg.auto_scrape_next_run = tz.now() + timedelta(hours=cfg.auto_scrape_interval_hours)
+
+    cfg.auto_campaign_enabled = "auto_campaign_enabled" in request.POST
+    smtp_id = request.POST.get("auto_campaign_smtp_profile", "").strip()
+    if smtp_id:
+        try:
+            cfg.auto_campaign_smtp_profile = SmtpProfile.objects.get(id=int(smtp_id))
+        except (SmtpProfile.DoesNotExist, ValueError):
+            cfg.auto_campaign_smtp_profile = None
+    else:
+        cfg.auto_campaign_smtp_profile = None
+
+    cfg.auto_campaign_from_name = request.POST.get("auto_campaign_from_name", "").strip()
+    cfg.auto_campaign_from_email = request.POST.get("auto_campaign_from_email", "").strip()
+    cfg.auto_campaign_subject = request.POST.get("auto_campaign_subject", "").strip()
+    cfg.auto_campaign_body = request.POST.get("auto_campaign_body", "").strip()
+    try:
+        cfg.auto_campaign_delay_minutes = max(0, int(request.POST.get("auto_campaign_delay_minutes", 30)))
+    except ValueError:
+        pass
+
+    cfg.save()
+    return redirect("home")
 
 
 def _start_maps_job(request):

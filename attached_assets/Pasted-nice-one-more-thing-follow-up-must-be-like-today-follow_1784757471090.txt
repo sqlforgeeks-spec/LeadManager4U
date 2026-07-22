@@ -1,0 +1,91 @@
+nice one more thing. follow up must be like today followed and then notify tomorrow for followup and then after 7 dayas and after 14 days and then closed and also allow user to update the follow up date as the calender dropdown and also allow to add a note as well like converted, closed etc do it as u think good and if marked converted/stooped then dont retry on that person in email campaign automatically until forced or changed status. and in the dashboard we should show these status as well, like how many converted, stooped , how many has no website, no, emails etc like a dashbaord show have those things and also allow user to prioritize manually few leads manully like mark star or important to show them above all row and we can show another status filter as well right? and whatever u think is the best add you have full power.. and in email smtp configuration i hope i can set up gmail smtp as well.. lets go
+
+12 minutes ago
+Tracking and managing follow-ups
+
+Tracking and managing follow-ups
+Big feature set! Let me explore the codebase first to understand the current models, views, and templates so I can plan all the changes.
+
+
+3 actions
+Good, I have a clear picture. Let me read the specific files I need before writing code.
+
+
+4 actions
+Let me read the remaining files I need before starting to code.
+
+
+4 actions
+Let me read the remaining key sections I need in parallel.
+
+
+9 actions
+Now I have everything I need. Let me build all of this. I'll do the model first (needs migration), then everything else in parallel.
+
+Plan:
+
+Model: add lead_status, is_starred, follow_up_date, follow_up_note to BusinessListing
+Email sender: auto-skip converted/stopped leads
+Views: enriched stats, starred-first sort, new filters, api_update_lead endpoint, smarter notifications
+Dashboard: second stat row (converted, stopped, following up, starred, no-email, no-phone, no-website)
+Leads table: star toggle inline, status badge, follow-up modal with stage quick-buttons + date picker + note, new filter chips (Starred, Following Up, Converted, Stopped)
+SMTP page: add Gmail setup guide inline
+
+4 actions
+Migration done. Now let me read the _build_leads_qs function and a bit more of views.py to make targeted edits, then do all changes in parallel.
+
+
+8 actions
+Now I'll make all remaining changes in parallel batches. Starting with the backend changes simultaneously:
+
+
+2 actions
+Now I'll fire all independent changes in parallel — views updates, URL registration, dashboard template, and CSS all at once:
+
+
+2 actions
+Continuing all remaining changes in parallel — notifications, URLs, and dashboard template simultaneously:
+
+
+2 actions
+Now the remaining batch — _build_leads_qs, URLs, and the dashboard template all at once:
+
+
+2 actions
+Continuing all remaining parallel changes — filters, URL registration, and dashboard template:
+
+
+2 actions
+Now I'll fire the big independent batch — URL registration, dashboard template, CSS styles, and the leads() view update all at once:
+
+
+5 actions
+Now firing the big batch — api_update_lead view, dashboard template, and CSS styles all at once:
+
+
+2 actions
+Good — now all three remaining major files at once (dashboard template, leads template, CSS):
+
+
+2 actions
+Now handling the CSS additions and the first leads.html edits in parallel:
+
+
+2 actions
+Now I'll fire CSS and the first four leads.html edits all at once:
+
+
+2 actions
+Now I'll fire all the remaining leads.html edits in parallel batches. First batch — stats section, filter chips, and clear-all condition:
+
+
+2 actions
+Continuing all remaining leads.html edits in one big parallel batch — filter chips, table header, row template, follow-up modal, and JS:
+
+
+2 actions
+Continuing — all remaining leads.html edits in one batch (clear condition, table header, row template, modal, JS):
+
+
+Edited leads.html
+You've reached your daily free quota limit. It will reset at 12:00 AM UTC.

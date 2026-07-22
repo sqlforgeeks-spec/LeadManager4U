@@ -4,6 +4,7 @@
 {% block topbar_title %}All Leads{% endblock %}
 
 {% block topbar_actions %}
+  <button class="btn btn-ghost btn-sm" onclick="document.getElementById('dedupe-modal').style.display='flex'">🗂 Remove Dupes</button>
   <a href="{% url 'upload_leads' %}" class="btn btn-secondary btn-sm">⬆ Import CSV/Excel</a>
   <a href="{% url 'new_campaign' %}" class="btn btn-primary btn-sm">✉ New Campaign</a>
 {% endblock %}
@@ -219,7 +220,8 @@
           <th>Phone</th>
           <th>Email</th>
           <th>Website</th>
-          <th>Location</th>
+          <th style="min-width:120px;">Status</th>
+          <th style="min-width:110px;">Follow-up</th>
           <th>Contacted</th>
           <th>Reach Out</th>
           <th>Actions</th>
@@ -227,37 +229,65 @@
       </thead>
       <tbody>
         {% for listing in listings %}
-        <tr data-id="{{ listing.id }}" data-email="{{ listing.email|escapejs }}" data-phone="{{ listing.phone|escapejs }}" data-name="{{ listing.name|escapejs }}">
+        <tr data-id="{{ listing.id }}"
+            data-email="{{ listing.email|escapejs }}"
+            data-phone="{{ listing.phone|escapejs }}"
+            data-name="{{ listing.name|escapejs }}"
+            data-status="{{ listing.lead_status }}"
+            data-starred="{{ listing.is_starred|yesno:'1,0' }}"
+            data-followup="{{ listing.follow_up_date|date:'Y-m-d'|default:'' }}"
+            {% if listing.lead_status == 'converted' %}style="opacity:0.7;"{% endif %}>
           <td class="no-row-click" style="text-align:center;">
             <input type="checkbox" class="lead-chk" value="{{ listing.id }}" onchange="updateSelection()" style="width:15px;height:15px;cursor:pointer;">
           </td>
+          <!-- Business + Star -->
           <td>
-            <div style="font-weight:600;font-size:13px;">{{ listing.name }}</div>
-            {% if listing.address %}<div style="font-size:11px;color:#888;margin-top:2px;">{{ listing.address|truncatechars:50 }}</div>{% endif %}
-            <div style="font-size:11px;color:#aaa;">{{ listing.source }}</div>
+            <div style="display:flex;align-items:flex-start;gap:6px;">
+              <button class="star-btn" data-starred="{{ listing.is_starred|yesno:'1,0' }}"
+                onclick="event.stopPropagation();toggleStar({{ listing.id }}, this)"
+                title="{{ listing.is_starred|yesno:'Unstar,Star this lead' }}">{{ listing.is_starred|yesno:'⭐,☆' }}</button>
+              <div>
+                <div style="font-weight:600;font-size:13px;line-height:1.3;">{{ listing.name }}</div>
+                {% if listing.address %}<div style="font-size:11px;color:#888;margin-top:1px;">{{ listing.address|truncatechars:45 }}</div>{% endif %}
+                <div style="font-size:11px;color:#aaa;">{{ listing.source }}</div>
+              </div>
+            </div>
           </td>
           <td>
-            {% if listing.phone %}
-              <span class="font-mono" style="font-size:12px;">{{ listing.phone }}</span>
-            {% else %}
-              <span class="text-muted">—</span>
-            {% endif %}
+            {% if listing.phone %}<span class="font-mono" style="font-size:12px;">{{ listing.phone }}</span>
+            {% else %}<span class="text-muted">—</span>{% endif %}
           </td>
           <td>
-            {% if listing.email %}
-              <span class="truncate text-primary" title="{{ listing.email }}" style="font-size:12px;max-width:170px;display:block;">{{ listing.email }}</span>
-            {% else %}
-              <span class="text-muted">—</span>
-            {% endif %}
+            {% if listing.email %}<span class="truncate text-primary" title="{{ listing.email }}" style="font-size:12px;max-width:170px;display:block;">{{ listing.email }}</span>
+            {% else %}<span class="text-muted">—</span>{% endif %}
           </td>
           <td>
-            {% if listing.website %}
-              <a href="{{ listing.website }}" target="_blank" rel="noopener" class="text-primary" style="font-size:12px;">Visit ↗</a>
-            {% else %}
-              <span class="text-muted">—</span>
-            {% endif %}
+            {% if listing.website %}<a href="{{ listing.website }}" target="_blank" rel="noopener" class="text-primary" style="font-size:12px;">Visit ↗</a>
+            {% else %}<span class="text-muted">—</span>{% endif %}
           </td>
-          <td class="text-muted" style="font-size:12px;">{{ listing.location }}</td>
+          <!-- Status pill with quick-set dropdown -->
+          <td class="no-row-click">
+            <button class="status-pill status-pill-{{ listing.lead_status }}"
+              onclick="openStatusDropdown(this, {{ listing.id }}, event)">
+              {% if listing.lead_status == 'fresh' %}🔵 Fresh
+              {% elif listing.lead_status == 'following_up' %}🔄 Following Up
+              {% elif listing.lead_status == 'converted' %}✅ Converted
+              {% elif listing.lead_status == 'stopped' %}🚫 Stopped
+              {% else %}{{ listing.lead_status }}{% endif %}
+              <span style="font-size:9px;opacity:0.6;margin-left:2px;">▼</span>
+            </button>
+          </td>
+          <!-- Follow-up date picker -->
+          <td class="no-row-click">
+            <button class="followup-cell {% if listing.follow_up_date %}followup-set{% if listing.follow_up_date < today_date %} followup-overdue{% endif %}{% endif %}"
+              onclick="openFollowupPicker(this, {{ listing.id }}, '{{ listing.follow_up_date|date:'Y-m-d'|default:'' }}', event)">
+              {% if listing.follow_up_date %}
+                <span style="font-size:10px;">📅</span> {{ listing.follow_up_date|date:"M d" }}
+              {% else %}
+                <span style="color:#94a3b8;">+ Set date</span>
+              {% endif %}
+            </button>
+          </td>
           <td style="min-width:100px;">
             {% if listing.last_contact_info %}
               <div style="font-size:11px;">
@@ -270,17 +300,15 @@
             {% endif %}
           </td>
           <!-- Quick reach-out icons -->
-          <td class="no-row-click" style="min-width:130px;">
-            <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;">
-              <!-- Email -->
+          <td class="no-row-click" style="min-width:120px;">
+            <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
               {% if listing.email %}
-              <button class="icon-btn icon-email" title="Log Email contact"
+              <button class="icon-btn" title="Log Email contact"
                 onclick="logContact({{ listing.id }}, 'email', '{{ listing.email }}')"
                 style="background:#e3f2fd;color:#1565c0;">
                 <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"/><path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"/></svg>
               </button>
-              <!-- Gmail -->
-              <a class="icon-btn icon-gmail" title="Open Gmail"
+              <a class="icon-btn" title="Open Gmail"
                 href="https://mail.google.com/mail/?view=cm&to={{ listing.email }}&su=Hi+{{ listing.name|urlencode }}"
                 target="_blank" rel="noopener"
                 onclick="logContactSilent({{ listing.id }}, 'gmail')"
@@ -288,26 +316,20 @@
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
               </a>
               {% endif %}
-              <!-- WhatsApp -->
               {% if listing.phone %}
-              <a class="icon-btn icon-wa" title="Open WhatsApp"
+              <a class="icon-btn" title="WhatsApp"
                 href="https://wa.me/{{ listing.phone|cut:' '|cut:'-'|cut:'('|cut:')'|cut:'+' }}"
                 target="_blank" rel="noopener"
                 onclick="logContactSilent({{ listing.id }}, 'whatsapp')"
                 style="background:#e8f5e9;color:#1b5e20;text-decoration:none;">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
               </a>
-              <!-- Call -->
-              <a class="icon-btn icon-call" title="Call"
-                href="tel:{{ listing.phone }}"
+              <a class="icon-btn" title="Call" href="tel:{{ listing.phone }}"
                 onclick="logContactSilent({{ listing.id }}, 'call')"
                 style="background:#f3e5f5;color:#6a1b9a;text-decoration:none;">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
               </a>
-              {% endif %}
-              <!-- Telegram -->
-              {% if listing.phone %}
-              <a class="icon-btn icon-tg" title="Open Telegram"
+              <a class="icon-btn" title="Telegram"
                 href="tg://resolve?phone={{ listing.phone|cut:' '|cut:'-'|cut:'('|cut:')'|cut:'+' }}"
                 rel="noopener"
                 onclick="logContactSilent({{ listing.id }}, 'telegram')"
@@ -350,6 +372,64 @@
 </div>
 {% endif %}
 
+<!-- ── Global Status Dropdown ──────────────────────────────────────────────── -->
+<div id="status-dropdown" style="display:none;position:fixed;z-index:10001;">
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.14);padding:5px;min-width:165px;">
+    <button class="status-option" onclick="setStatus('fresh')"><span class="status-dot dot-fresh"></span>Fresh</button>
+    <button class="status-option" onclick="setStatus('following_up')"><span class="status-dot dot-following_up"></span>Following Up</button>
+    <button class="status-option" onclick="setStatus('converted')"><span class="status-dot dot-converted"></span>Converted</button>
+    <button class="status-option" onclick="setStatus('stopped')"><span class="status-dot dot-stopped"></span>Stopped</button>
+  </div>
+</div>
+
+<!-- ── Global Follow-up Popover ───────────────────────────────────────────── -->
+<div id="followup-popover" style="display:none;position:fixed;z-index:10001;">
+  <div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.14);padding:14px;min-width:230px;">
+    <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:10px;">📅 Set Follow-up Date</div>
+    <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;">
+      <button class="followup-quick-btn" onclick="setFollowupQuick(0)">Today</button>
+      <button class="followup-quick-btn" onclick="setFollowupQuick(1)">+1 day</button>
+      <button class="followup-quick-btn" onclick="setFollowupQuick(7)">+7 days</button>
+      <button class="followup-quick-btn" onclick="setFollowupQuick(14)">+14 days</button>
+    </div>
+    <input type="date" id="followup-date-input" class="form-input" style="width:100%;margin-bottom:10px;">
+    <div style="display:flex;gap:6px;">
+      <button class="btn btn-primary btn-sm" style="flex:1;" onclick="commitFollowup()">Save</button>
+      <button class="btn btn-ghost btn-sm" onclick="saveFollowupDate('')">Clear</button>
+      <button class="btn btn-ghost btn-sm" onclick="closeFollowupPopover()">✕</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Dedupe Modal ────────────────────────────────────────────────────────── -->
+<div id="dedupe-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:14px;width:430px;max-width:95vw;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+    <div style="font-weight:700;font-size:17px;margin-bottom:6px;">🗂️ Remove Duplicate Leads</div>
+    <div style="font-size:13px;color:#64748b;margin-bottom:18px;">The oldest record in each group is kept. This action cannot be undone.</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:22px;">
+      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:12px;border:1px solid #e2e8f0;border-radius:9px;transition:border 0.15s;" onmouseover="this.style.borderColor='#2563eb'" onmouseout="this.style.borderColor='#e2e8f0'">
+        <input type="radio" name="dedupe-mode" value="email" id="dm-email" checked style="margin-top:2px;accent-color:#2563eb;">
+        <div>
+          <div style="font-weight:600;font-size:13px;">By Email Address</div>
+          <div style="font-size:12px;color:#94a3b8;margin-top:2px;">Removes leads sharing the same email. Best choice.</div>
+        </div>
+      </label>
+      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;padding:12px;border:1px solid #e2e8f0;border-radius:9px;transition:border 0.15s;" onmouseover="this.style.borderColor='#2563eb'" onmouseout="this.style.borderColor='#e2e8f0'">
+        <input type="radio" name="dedupe-mode" value="name" style="margin-top:2px;accent-color:#2563eb;">
+        <div>
+          <div style="font-weight:600;font-size:13px;">By Business Name</div>
+          <div style="font-size:12px;color:#94a3b8;margin-top:2px;">Removes leads with identical names. Useful for scraper overlap.</div>
+        </div>
+      </label>
+    </div>
+    <div id="dedupe-result" style="display:none;padding:10px;background:#f0fdf4;border-radius:8px;color:#15803d;font-size:13px;font-weight:600;margin-bottom:12px;text-align:center;"></div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-danger btn-sm" style="flex:1;" onclick="runDedupe()" id="dedupe-run-btn">🗑 Remove Duplicates</button>
+      <button class="btn btn-ghost btn-sm" onclick="closeDedupe()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- Contact History Modal -->
 <div id="contact-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center;">
   <div style="background:#fff;border-radius:14px;width:520px;max-width:95vw;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
@@ -380,18 +460,180 @@
 {% endblock %}
 
 {% block scripts %}
-<style>
-.icon-btn {
-  display:inline-flex;align-items:center;justify-content:center;
-  width:24px;height:24px;border-radius:6px;border:none;cursor:pointer;
-  transition:transform 0.15s,opacity 0.15s;text-decoration:none;
-  flex-shrink:0;
-}
-.icon-btn:hover { transform:scale(1.15);opacity:0.85; }
-</style>
 <script>
 const CSRF = getCookie('csrftoken');
 let _currentListingId = null;
+
+// ── Star toggle ──────────────────────────────────────────────────────────────
+function toggleStar(listingId, btn) {
+  const isStarred = btn.dataset.starred === '1';
+  fetch(`/api/lead/${listingId}/update/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ is_starred: !isStarred })
+  }).then(r => r.json()).then(data => {
+    if (data.ok) {
+      btn.dataset.starred = data.is_starred ? '1' : '0';
+      btn.textContent = data.is_starred ? '⭐' : '☆';
+      btn.title = data.is_starred ? 'Unstar' : 'Star this lead';
+      showToast(data.is_starred ? '⭐ Starred' : 'Unstarred');
+    }
+  }).catch(() => showToast('Error saving'));
+}
+
+// ── Status dropdown ──────────────────────────────────────────────────────────
+let _statusListingId = null;
+const _sdrop = document.getElementById('status-dropdown');
+
+function openStatusDropdown(el, listingId, e) {
+  e.stopPropagation();
+  _statusListingId = listingId;
+  const rect = el.getBoundingClientRect();
+  _sdrop.style.top = (rect.bottom + 4) + 'px';
+  _sdrop.style.left = rect.left + 'px';
+  _sdrop.style.display = 'block';
+}
+
+function setStatus(status) {
+  if (!_statusListingId) return;
+  const id = _statusListingId;
+  fetch(`/api/lead/${id}/update/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ lead_status: status })
+  }).then(r => r.json()).then(data => {
+    if (data.ok) {
+      const row = document.querySelector(`tr[data-id="${id}"]`);
+      if (row) {
+        row.dataset.status = status;
+        const pill = row.querySelector('.status-pill');
+        if (pill) {
+          const labels = { fresh:'🔵 Fresh', following_up:'🔄 Following Up', converted:'✅ Converted', stopped:'🚫 Stopped' };
+          pill.className = `status-pill status-pill-${status}`;
+          pill.innerHTML = (labels[status] || status) + ' <span style="font-size:9px;opacity:0.6;margin-left:2px;">▼</span>';
+        }
+        if (status === 'converted') row.style.opacity = '0.7';
+        else row.style.opacity = '';
+        // If set to following_up and no follow-up date yet, update follow-up cell
+        if (status === 'following_up' && !row.dataset.followup && data.follow_up_date) {
+          row.dataset.followup = data.follow_up_date;
+          const cell = row.querySelector('.followup-cell');
+          if (cell) {
+            const d = new Date(data.follow_up_date + 'T00:00:00');
+            cell.classList.add('followup-set');
+            cell.innerHTML = `<span style="font-size:10px;">📅</span> ${d.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;
+          }
+        }
+      }
+      _sdrop.style.display = 'none';
+      showToast('✅ Status updated');
+    }
+  }).catch(() => showToast('Error saving'));
+}
+
+document.addEventListener('click', () => { _sdrop.style.display = 'none'; closeFollowupPopover(); });
+_sdrop.addEventListener('click', e => e.stopPropagation());
+
+// ── Follow-up date picker ────────────────────────────────────────────────────
+let _followupListingId = null;
+const _fpop = document.getElementById('followup-popover');
+
+function openFollowupPicker(el, listingId, currentDate, e) {
+  e.stopPropagation();
+  _followupListingId = listingId;
+  const rect = el.getBoundingClientRect();
+  _fpop.style.top = (rect.bottom + 4) + 'px';
+  _fpop.style.left = Math.min(rect.left, window.innerWidth - 250) + 'px';
+  document.getElementById('followup-date-input').value = currentDate || '';
+  _fpop.style.display = 'block';
+}
+
+function closeFollowupPopover() { _fpop.style.display = 'none'; }
+
+function setFollowupQuick(days) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  const iso = d.toISOString().slice(0, 10);
+  document.getElementById('followup-date-input').value = iso;
+}
+
+function commitFollowup() {
+  saveFollowupDate(document.getElementById('followup-date-input').value);
+}
+
+function saveFollowupDate(dateStr) {
+  if (!_followupListingId) return;
+  const id = _followupListingId;
+  const payload = { follow_up_date: dateStr || null };
+  // Auto-set status to following_up if we're adding a date
+  if (dateStr) payload.lead_status = 'following_up';
+  fetch(`/api/lead/${id}/update/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).then(r => r.json()).then(data => {
+    if (data.ok) {
+      const row = document.querySelector(`tr[data-id="${id}"]`);
+      if (row) {
+        row.dataset.followup = dateStr || '';
+        const cell = row.querySelector('.followup-cell');
+        if (cell) {
+          if (dateStr) {
+            const d = new Date(dateStr + 'T00:00:00');
+            const today = new Date(); today.setHours(0,0,0,0);
+            cell.classList.add('followup-set');
+            cell.classList.toggle('followup-overdue', d < today);
+            cell.innerHTML = `<span style="font-size:10px;">📅</span> ${d.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;
+          } else {
+            cell.className = 'followup-cell';
+            cell.innerHTML = '<span style="color:#94a3b8;">+ Set date</span>';
+          }
+        }
+        // Sync status pill if status changed
+        if (dateStr && data.lead_status) {
+          row.dataset.status = data.lead_status;
+          const pill = row.querySelector('.status-pill');
+          if (pill) {
+            const labels = { fresh:'🔵 Fresh', following_up:'🔄 Following Up', converted:'✅ Converted', stopped:'🚫 Stopped' };
+            pill.className = `status-pill status-pill-${data.lead_status}`;
+            pill.innerHTML = (labels[data.lead_status] || data.lead_status) + ' <span style="font-size:9px;opacity:0.6;margin-left:2px;">▼</span>';
+          }
+        }
+      }
+      closeFollowupPopover();
+      showToast(dateStr ? '📅 Follow-up set' : 'Follow-up cleared');
+    }
+  }).catch(() => showToast('Error saving'));
+}
+
+_fpop.addEventListener('click', e => e.stopPropagation());
+
+// ── Dedupe ───────────────────────────────────────────────────────────────────
+function runDedupe() {
+  const mode = document.querySelector('input[name="dedupe-mode"]:checked')?.value || 'email';
+  const btn = document.getElementById('dedupe-run-btn');
+  btn.textContent = 'Removing…'; btn.disabled = true;
+  const fd = new FormData();
+  fd.append('mode', mode);
+  fd.append('csrfmiddlewaretoken', CSRF);
+  fetch('/api/leads/dedupe/', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        const res = document.getElementById('dedupe-result');
+        res.style.display = 'block';
+        res.textContent = data.removed > 0 ? `✅ Removed ${data.removed} duplicate lead${data.removed !== 1 ? 's' : ''}` : '✅ No duplicates found';
+        btn.textContent = '🗑 Remove Duplicates'; btn.disabled = false;
+        if (data.removed > 0) setTimeout(() => location.reload(), 1200);
+      }
+    }).catch(() => { btn.textContent = '🗑 Remove Duplicates'; btn.disabled = false; showToast('Error running dedupe'); });
+}
+
+function closeDedupe() {
+  document.getElementById('dedupe-modal').style.display = 'none';
+  document.getElementById('dedupe-result').style.display = 'none';
+}
+document.getElementById('dedupe-modal').addEventListener('click', function(e) { if(e.target===this) closeDedupe(); });
 
 // ── Selection ───────────────────────────────────────────────────────────────
 function updateSelection() {

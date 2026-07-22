@@ -429,11 +429,25 @@ def _get_campaign_suggestions(stats):
 # ─── Dashboard ───────────────────────────────────────────────────────────────
 
 def home(request):
+    from datetime import date as _date, timedelta as _td
     stats = _global_stats()
     recent_jobs = list(ScrapeJob.objects.order_by("-created_at")[:8])
     refresh_home = any(j.status in {"queued", "running", "paused"} for j in recent_jobs)
     auto_config = AutoConfig.get()
     smtp_profiles = list(SmtpProfile.objects.all())
+    today = _date.today()
+    next_week = today + _td(days=7)
+
+    today_followups = list(
+        BusinessListing.objects.filter(follow_up_date=today)
+        .order_by("-is_starred", "name")[:12]
+    )
+    nextweek_followups = list(
+        BusinessListing.objects.filter(
+            follow_up_date__gt=today,
+            follow_up_date__lte=next_week,
+        ).order_by("follow_up_date", "-is_starred")[:12]
+    )
 
     return render(request, "home.html", {
         "recent_jobs": recent_jobs,
@@ -450,6 +464,10 @@ def home(request):
         "auto_campaign_on": auto_config.auto_campaign_enabled,
         "smtp_profiles": smtp_profiles,
         "scrape_interval_options": [1, 2, 4, 6, 8, 12, 24, 48, 72, 168],
+        "today_followups": today_followups,
+        "nextweek_followups": nextweek_followups,
+        "today_str": today.strftime("%b %d"),
+        "nextweek_str": next_week.strftime("%b %d"),
     })
 
 
@@ -1371,6 +1389,52 @@ def api_update_lead(request, listing_id):
         "follow_up_date": listing.follow_up_date.isoformat() if listing.follow_up_date else None,
         "follow_up_note": listing.follow_up_note,
     })
+
+
+# ─── Deduplicate leads ────────────────────────────────────────────────────────
+
+@require_POST
+def dedupe_leads(request):
+    """Remove duplicate BusinessListing records, keeping the oldest per group."""
+    from django.db.models import Min, Count
+    mode = request.POST.get("mode", "email")
+    removed = 0
+
+    if mode == "email":
+        dupes = (
+            BusinessListing.objects
+            .filter(email__isnull=False)
+            .exclude(email="")
+            .values("email")
+            .annotate(cnt=Count("id"), min_id=Min("id"))
+            .filter(cnt__gt=1)
+        )
+        for d in dupes:
+            deleted_count, _ = (
+                BusinessListing.objects
+                .filter(email=d["email"])
+                .exclude(id=d["min_id"])
+                .delete()
+            )
+            removed += deleted_count
+
+    elif mode == "name":
+        dupes = (
+            BusinessListing.objects
+            .values("name")
+            .annotate(cnt=Count("id"), min_id=Min("id"))
+            .filter(cnt__gt=1)
+        )
+        for d in dupes:
+            deleted_count, _ = (
+                BusinessListing.objects
+                .filter(name=d["name"])
+                .exclude(id=d["min_id"])
+                .delete()
+            )
+            removed += deleted_count
+
+    return JsonResponse({"ok": True, "removed": removed})
 
 
 # ─── Upload leads ─────────────────────────────────────────────────────────────

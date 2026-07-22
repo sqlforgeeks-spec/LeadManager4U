@@ -6,6 +6,12 @@
 {% block topbar_actions %}
   <a href="{% url 'search_home' %}" class="btn btn-secondary btn-sm">← Search Jobs</a>
   <a href="{% url 'download_job_csv' job.id %}" class="btn btn-primary btn-sm">⬇ Download CSV</a>
+  {% if job.status not in "queued,running" %}
+    <form method="post" action="{% url 'delete_job' job.id %}" onsubmit="return confirm('Delete this job and ALL its leads permanently?')">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-danger btn-sm">🗑 Delete Job</button>
+    </form>
+  {% endif %}
 {% endblock %}
 
 {% block content %}

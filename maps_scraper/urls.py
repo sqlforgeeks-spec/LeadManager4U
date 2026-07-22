@@ -42,4 +42,8 @@ urlpatterns = [
     path('jobs/<int:job_id>/pause/', views.pause_job, name='pause_job'),
     path('jobs/<int:job_id>/resume/', views.resume_job, name='resume_job'),
     path('jobs/<int:job_id>/stop/', views.stop_job, name='stop_job'),
+    path('jobs/<int:job_id>/delete/', views.delete_job, name='delete_job'),
+
+    # Lead deletion
+    path('leads/<int:listing_id>/delete/', views.delete_lead, name='delete_lead'),
 ]

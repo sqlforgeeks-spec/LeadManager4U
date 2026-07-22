@@ -691,6 +691,27 @@ def delete_campaign(request, campaign_id):
     return redirect("campaigns")
 
 
+@require_POST
+def delete_job(request, job_id):
+    job = get_object_or_404(ScrapeJob, id=job_id)
+    # Prevent deleting actively running jobs
+    if job.status in {"queued", "running"}:
+        return _redirect_back(request, reverse("home"))
+    job.delete()
+    # Redirect based on source
+    referer = request.META.get("HTTP_REFERER", "")
+    if "search" in referer:
+        return redirect("search_home")
+    return redirect("home")
+
+
+@require_POST
+def delete_lead(request, listing_id):
+    listing = get_object_or_404(BusinessListing, id=listing_id)
+    listing.delete()
+    return _redirect_back(request, reverse("leads"))
+
+
 # ─── API endpoints ────────────────────────────────────────────────────────────
 
 def _job_payload(job):

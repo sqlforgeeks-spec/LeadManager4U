@@ -96,6 +96,7 @@
           <th>Location</th>
           <th>Source</th>
           <th>Query</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -108,6 +109,12 @@
           <td class="text-muted">{{ listing.location }}</td>
           <td><span class="source-tag">{{ listing.source }}</span></td>
           <td class="text-muted" style="max-width:160px;"><span class="truncate" title="{{ listing.search_query }}">{{ listing.search_query }}</span></td>
+          <td class="no-row-click">
+            <form method="post" action="{% url 'delete_lead' listing.id %}" onsubmit="return confirm('Delete this lead permanently?')">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-ghost btn-sm text-danger" title="Delete lead">🗑</button>
+            </form>
+          </td>
         </tr>
         {% endfor %}
       </tbody>

@@ -32,14 +32,62 @@
 
 <!-- Filters -->
 <form method="get" action="{% url 'leads' %}" id="filter-form">
-  <div class="card mb-16" style="padding:16px;">
-    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
-      <div style="flex:1;min-width:200px;">
-        <label class="form-label">Search</label>
-        <input type="text" name="q" class="form-input" placeholder="Name, email, phone, website, address…" value="{{ filters.q }}">
+  <div class="filter-panel mb-16">
+    <!-- Row 1: Search bar -->
+    <div class="filter-search-row">
+      <div class="filter-search-box">
+        <svg class="filter-search-icon" width="16" height="16" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/></svg>
+        <input type="text" name="q" class="filter-search-input" placeholder="Search name, email, phone, website, address…" value="{{ filters.q }}">
       </div>
-      <div style="min-width:140px;">
-        <label class="form-label">Source</label>
+      <button type="submit" class="btn btn-primary btn-sm">Search</button>
+      {% if filters.q or filters.source or filters.has_email or filters.has_phone or filters.has_website or filters.job_id or filters.location or filters.contacted %}
+        <a href="{% url 'leads' %}" class="btn btn-ghost btn-sm" style="color:#ef4444;">✕ Clear All</a>
+      {% endif %}
+    </div>
+
+    <!-- Row 2: Quick filter chips -->
+    <div class="filter-chips-row">
+      <!-- Has Email chip -->
+      <label class="filter-chip {% if filters.has_email == '1' %}active-blue{% endif %}">
+        <input type="radio" name="has_email" value="1" {% if filters.has_email == '1' %}checked{% endif %} onchange="this.form.submit()" style="display:none">
+        ✉ Has Email
+      </label>
+      <label class="filter-chip {% if filters.has_email == '0' %}active-orange{% endif %}">
+        <input type="radio" name="has_email" value="0" {% if filters.has_email == '0' %}checked{% endif %} onchange="this.form.submit()" style="display:none">
+        ✉ No Email
+      </label>
+      <!-- Has Phone chip -->
+      <label class="filter-chip {% if filters.has_phone == '1' %}active-blue{% endif %}">
+        <input type="radio" name="has_phone" value="1" {% if filters.has_phone == '1' %}checked{% endif %} onchange="this.form.submit()" style="display:none">
+        📞 Has Phone
+      </label>
+      <label class="filter-chip {% if filters.has_phone == '0' %}active-orange{% endif %}">
+        <input type="radio" name="has_phone" value="0" {% if filters.has_phone == '0' %}checked{% endif %} onchange="this.form.submit()" style="display:none">
+        📞 No Phone
+      </label>
+      <!-- Contacted chips -->
+      <label class="filter-chip {% if filters.contacted == 'never' %}active-green{% endif %}">
+        <input type="radio" name="contacted" value="never" {% if filters.contacted == 'never' %}checked{% endif %} onchange="this.form.submit()" style="display:none">
+        🆕 Never Contacted
+      </label>
+      <label class="filter-chip {% if filters.contacted == 'any' %}active-purple{% endif %}">
+        <input type="radio" name="contacted" value="any" {% if filters.contacted == 'any' %}checked{% endif %} onchange="this.form.submit()" style="display:none">
+        📨 Contacted
+      </label>
+      <label class="filter-chip {% if filters.contacted == '1d' %}active-orange{% endif %}">
+        <input type="radio" name="contacted" value="1d" {% if filters.contacted == '1d' %}checked{% endif %} onchange="this.form.submit()" style="display:none">
+        🔔 Follow Up Today
+      </label>
+      <label class="filter-chip {% if filters.contacted == '7d' %}active-orange{% endif %}">
+        <input type="radio" name="contacted" value="7d" {% if filters.contacted == '7d' %}checked{% endif %} onchange="this.form.submit()" style="display:none">
+        📅 Re-engage (7d)
+      </label>
+    </div>
+
+    <!-- Row 3: Dropdowns -->
+    <div class="filter-dropdowns-row">
+      <div class="filter-select-group">
+        <label class="filter-select-label">Source</label>
         <select name="source" class="form-select" onchange="this.form.submit()">
           <option value="">All Sources</option>
           <option value="maps" {% if filters.source == "maps" %}selected{% endif %}>🗺️ Google Maps</option>
@@ -54,60 +102,28 @@
           <option value="uploaded" {% if filters.source == "uploaded" %}selected{% endif %}>⬆ Uploaded</option>
         </select>
       </div>
-      <div style="min-width:130px;">
-        <label class="form-label">Email</label>
-        <select name="has_email" class="form-select" onchange="this.form.submit()">
-          <option value="">Any</option>
-          <option value="1" {% if filters.has_email == "1" %}selected{% endif %}>Has Email</option>
-          <option value="0" {% if filters.has_email == "0" %}selected{% endif %}>No Email</option>
+      <div class="filter-select-group">
+        <label class="filter-select-label">Job</label>
+        <select name="job_id" class="form-select" onchange="this.form.submit()">
+          <option value="">All Jobs</option>
+          {% for job in jobs_for_filter %}
+            <option value="{{ job.id }}" {% if filters.job_id == job.id|stringformat:"s" %}selected{% endif %}>
+              #{{ job.id }} {{ job.search_phrase|truncatechars:28 }}
+            </option>
+          {% endfor %}
         </select>
       </div>
-      <div style="min-width:130px;">
-        <label class="form-label">Phone</label>
-        <select name="has_phone" class="form-select" onchange="this.form.submit()">
-          <option value="">Any</option>
-          <option value="1" {% if filters.has_phone == "1" %}selected{% endif %}>Has Phone</option>
-          <option value="0" {% if filters.has_phone == "0" %}selected{% endif %}>No Phone</option>
-        </select>
-      </div>
-      <div style="min-width:130px;">
-        <label class="form-label">Website</label>
+      <div class="filter-select-group">
+        <label class="filter-select-label">Website</label>
         <select name="has_website" class="form-select" onchange="this.form.submit()">
           <option value="">Any</option>
           <option value="1" {% if filters.has_website == "1" %}selected{% endif %}>Has Website</option>
           <option value="0" {% if filters.has_website == "0" %}selected{% endif %}>No Website</option>
         </select>
       </div>
-      <div style="min-width:140px;">
-        <label class="form-label">Contacted</label>
-        <select name="contacted" class="form-select" onchange="this.form.submit()">
-          <option value="">All</option>
-          <option value="never" {% if filters.contacted == "never" %}selected{% endif %}>Never Contacted</option>
-          <option value="any" {% if filters.contacted == "any" %}selected{% endif %}>Contacted Before</option>
-          <option value="1d" {% if filters.contacted == "1d" %}selected{% endif %}>Yesterday</option>
-          <option value="7d" {% if filters.contacted == "7d" %}selected{% endif %}>7 Days Ago</option>
-        </select>
-      </div>
-      <div style="min-width:150px;">
-        <label class="form-label">Job</label>
-        <select name="job_id" class="form-select" onchange="this.form.submit()">
-          <option value="">All Jobs</option>
-          {% for job in jobs_for_filter %}
-            <option value="{{ job.id }}" {% if filters.job_id == job.id|stringformat:"s" %}selected{% endif %}>
-              #{{ job.id }} {{ job.search_phrase|truncatechars:25 }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-      <div style="min-width:140px;">
-        <label class="form-label">Location</label>
+      <div class="filter-select-group" style="flex:1.5">
+        <label class="filter-select-label">Location</label>
         <input type="text" name="location" class="form-input" placeholder="Filter by location…" value="{{ filters.location }}">
-      </div>
-      <div style="display:flex;gap:8px;align-items:flex-end;">
-        <button type="submit" class="btn btn-primary btn-sm">🔍 Search</button>
-        {% if filters.q or filters.source or filters.has_email or filters.has_phone or filters.has_website or filters.job_id or filters.location or filters.contacted %}
-          <a href="{% url 'leads' %}" class="btn btn-ghost btn-sm">✕ Clear</a>
-        {% endif %}
       </div>
     </div>
   </div>
@@ -127,11 +143,31 @@
 <form method="post" action="{% url 'campaign_from_selection' %}" id="selection-form">
   {% csrf_token %}
   <input type="hidden" name="listing_ids" id="selected-ids-input" value="">
-  <div id="selection-bar" style="display:none;background:linear-gradient(135deg,#1e3a5f,#1a5276);border-radius:10px;padding:12px 18px;margin-bottom:14px;display:none;align-items:center;gap:14px;flex-wrap:wrap;">
-    <span id="sel-count" style="color:#fff;font-weight:600;font-size:14px;">0 selected</span>
-    <button type="submit" class="btn btn-success btn-sm">✉ Email Selected</button>
-    <button type="button" class="btn btn-ghost btn-sm" style="color:#ccc;" onclick="clearSelection()">✕ Clear</button>
-    <span style="color:#aaa;font-size:12px;">Selected leads will be pre-loaded into a new campaign</span>
+  <div id="selection-bar" class="selection-bar" style="display:none;">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex:1;">
+      <span id="sel-count" style="color:#fff;font-weight:700;font-size:14px;background:rgba(255,255,255,0.15);padding:4px 10px;border-radius:20px;">0 selected</span>
+      <!-- Email Campaign -->
+      <button type="submit" class="sel-action-btn sel-btn-email" title="Create email campaign with selected leads">
+        <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor"><path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"/><path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"/></svg>
+        Email Campaign
+      </button>
+      <!-- Bulk Gmail -->
+      <button type="button" class="sel-action-btn sel-btn-gmail" onclick="bulkOpen('gmail')" title="Open Gmail compose for all selected (with email)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+        Gmail All
+      </button>
+      <!-- Bulk WhatsApp -->
+      <button type="button" class="sel-action-btn sel-btn-wa" onclick="bulkOpen('whatsapp')" title="Open WhatsApp for all selected (with phone)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+        WhatsApp All
+      </button>
+      <!-- Bulk Telegram -->
+      <button type="button" class="sel-action-btn sel-btn-tg" onclick="bulkOpen('telegram')" title="Open Telegram for all selected (with phone)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
+        Telegram All
+      </button>
+    </div>
+    <button type="button" class="sel-clear-btn" onclick="clearSelection()">✕ Clear</button>
   </div>
 </form>
 
@@ -162,7 +198,7 @@
       </thead>
       <tbody>
         {% for listing in listings %}
-        <tr data-id="{{ listing.id }}">
+        <tr data-id="{{ listing.id }}" data-email="{{ listing.email|escapejs }}" data-phone="{{ listing.phone|escapejs }}" data-name="{{ listing.name|escapejs }}">
           <td class="no-row-click" style="text-align:center;">
             <input type="checkbox" class="lead-chk" value="{{ listing.id }}" onchange="updateSelection()" style="width:15px;height:15px;cursor:pointer;">
           </td>
@@ -243,8 +279,8 @@
               <!-- Telegram -->
               {% if listing.phone %}
               <a class="icon-btn icon-tg" title="Open Telegram"
-                href="https://t.me/+{{ listing.phone|cut:' '|cut:'-'|cut:'('|cut:')'|cut:'+' }}"
-                target="_blank" rel="noopener"
+                href="tg://resolve?phone={{ listing.phone|cut:' '|cut:'-'|cut:'('|cut:')'|cut:'+' }}"
+                rel="noopener"
                 onclick="logContactSilent({{ listing.id }}, 'telegram')"
                 style="background:#e3f2fd;color:#0277bd;text-decoration:none;">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
@@ -352,6 +388,51 @@ function clearSelection() {
   document.querySelectorAll('.lead-chk').forEach(c => c.checked = false);
   document.getElementById('select-all-chk').checked = false;
   updateSelection();
+}
+
+// ── Bulk open tabs ───────────────────────────────────────────────────────────
+function bulkOpen(type) {
+  const chks = [...document.querySelectorAll('.lead-chk:checked')];
+  if (!chks.length) { showToast('No leads selected'); return; }
+
+  const urls = [];
+  chks.forEach(chk => {
+    const row = chk.closest('tr');
+    if (!row) return;
+    const email = row.dataset.email || '';
+    const rawPhone = row.dataset.phone || '';
+    const phone = rawPhone.replace(/[\s\-\(\)\+]/g, '');
+    const name  = row.dataset.name  || '';
+
+    let url = null;
+    if (type === 'gmail' && email) {
+      url = `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(email)}&su=${encodeURIComponent('Hi ' + name)}`;
+    } else if (type === 'whatsapp' && phone) {
+      url = `https://wa.me/${phone}`;
+    } else if (type === 'telegram' && phone) {
+      // tg:// deep-link to open chat by phone number in the Telegram client
+      url = `tg://resolve?phone=${phone}`;
+    }
+
+    if (url) {
+      urls.push({ url, id: chk.value });
+    }
+  });
+
+  if (!urls.length) {
+    const missing = type === 'gmail' ? 'email' : 'phone';
+    showToast(`None of the selected leads have a ${missing}`);
+    return;
+  }
+
+  // Open all URLs synchronously — must stay inside the user-gesture handler
+  // (no setTimeout) so browsers don't treat them as pop-ups
+  urls.forEach(({ url, id }) => {
+    window.open(url, '_blank', 'noopener');
+    logContactSilent(id, type);
+  });
+
+  showToast(`Opened ${urls.length} ${type} tab${urls.length > 1 ? 's' : ''}…`);
 }
 
 // ── Contact logging ─────────────────────────────────────────────────────────

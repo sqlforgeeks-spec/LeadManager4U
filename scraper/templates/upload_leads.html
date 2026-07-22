@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Import Leads{% endblock %}
+{% block topbar_title %}Import Leads{% endblock %}
+
+{% block topbar_actions %}
+  <a href="{% url 'leads' %}" class="btn btn-secondary btn-sm">← All Leads</a>
+{% endblock %}
+
+{% block content %}
+
+{% if success %}
+<div class="alert alert-success mb-24" style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:10px;padding:18px 22px;">
+  <div style="font-size:18px;font-weight:700;color:#2e7d32;margin-bottom:6px;">✅ Import Successful!</div>
+  <div style="color:#388e3c;font-size:14px;">
+    <strong>{{ created }}</strong> leads imported successfully.
+    {% if skipped %} <strong>{{ skipped }}</strong> rows were skipped (empty or invalid).{% endif %}
+  </div>
+  {% if mapped_columns %}
+  <div style="margin-top:10px;font-size:12px;color:#555;">
+    <strong>Columns mapped:</strong>
+    {% for field, col in mapped_columns.items %}
+      <span style="background:#fff;border:1px solid #c8e6c9;border-radius:4px;padding:2px 7px;margin:2px;display:inline-block;">{{ field }} → {{ col }}</span>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <div style="margin-top:14px;display:flex;gap:10px;">
+    <a href="{% url 'leads' %}?source=uploaded" class="btn btn-success btn-sm">View Imported Leads</a>
+    <a href="{% url 'upload_leads' %}" class="btn btn-secondary btn-sm">Import Another File</a>
+    <a href="{% url 'new_campaign' %}" class="btn btn-primary btn-sm">✉ Create Campaign</a>
+  </div>
+</div>
+{% endif %}
+
+{% if error %}
+<div class="alert alert-danger mb-24" style="background:#ffebee;border:1px solid #ef9a9a;border-radius:10px;padding:18px 22px;color:#c62828;">
+  <strong>⚠ Error:</strong> {{ error }}
+</div>
+{% endif %}
+
+<!-- Upload Form -->
+<div class="card mb-24">
+  <div class="card-header">
+    <div class="card-title">⬆ Import Leads from CSV or Excel</div>
+  </div>
+  <div class="card-body">
+    <p style="color:#666;font-size:14px;margin-bottom:20px;">
+      Upload a CSV (.csv) or Excel (.xlsx / .xls) file with your leads. The app will automatically detect common column names like
+      <strong>name</strong>, <strong>email</strong>, <strong>phone</strong>, <strong>website</strong>, <strong>address</strong>, and <strong>location</strong>.
+      Once imported, you can select them and send email campaigns directly.
+    </p>
+
+    <form method="post" enctype="multipart/form-data" action="{% url 'upload_leads' %}">
+      {% csrf_token %}
+      <div class="form-grid" style="max-width:600px;">
+        <div class="form-group">
+          <label class="form-label">File <span style="color:#e53935;">*</span></label>
+          <input type="file" name="file" class="form-input" accept=".csv,.xlsx,.xls" required
+            style="padding:8px;cursor:pointer;">
+          <div class="form-hint">Accepted: .csv, .xlsx, .xls — up to ~100,000 rows</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Source Label</label>
+          <input type="text" name="source_label" class="form-input" placeholder="e.g. Client List, Purchased Leads, LinkedIn Export"
+            value="uploaded">
+          <div class="form-hint">Used as the location tag for imported leads.</div>
+        </div>
+        <div class="form-group" style="justify-content:flex-end;align-items:flex-end;">
+          <button type="submit" class="btn btn-launch" style="min-width:160px;">⬆ Import Leads</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Column mapping guide -->
+<div class="card mb-24">
+  <div class="card-header">
+    <div class="card-title">📋 Supported Column Names</div>
+  </div>
+  <div class="card-body">
+    <p style="color:#666;font-size:13px;margin-bottom:16px;">
+      Column names are detected automatically (case-insensitive, spaces become underscores).
+      Use any of the aliases below in your file's header row:
+    </p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;">
+      {% for field, aliases in column_guide.items %}
+      <div style="background:#f8f9fa;border-radius:8px;padding:12px;">
+        <div style="font-weight:600;font-size:13px;color:#333;margin-bottom:6px;">{{ field|title }}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;">
+          {% for alias in aliases %}
+          <code style="background:#e9ecef;color:#495057;padding:1px 6px;border-radius:4px;font-size:11px;">{{ alias }}</code>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Sample template download -->
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">📄 Sample File Format</div>
+  </div>
+  <div class="card-body">
+    <p style="color:#666;font-size:13px;margin-bottom:14px;">Your file should have a header row like this:</p>
+    <div style="overflow-x:auto;">
+      <table class="table" style="min-width:700px;font-size:12px;">
+        <thead>
+          <tr>
+            <th>name</th>
+            <th>email</th>
+            <th>phone</th>
+            <th>website</th>
+            <th>address</th>
+            <th>location</th>
+            <th>notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Acme Dental</td>
+            <td>contact@acmedental.com</td>
+            <td>+1-555-123-4567</td>
+            <td>https://acmedental.com</td>
+            <td>123 Main St, New York</td>
+            <td>New York, NY</td>
+            <td>Decision maker is Dr. Smith</td>
+          </tr>
+          <tr>
+            <td>Best Plumbing Co</td>
+            <td>info@bestplumbing.com</td>
+            <td>+1-555-987-6543</td>
+            <td>https://bestplumbing.com</td>
+            <td>456 Oak Ave, Chicago</td>
+            <td>Chicago, IL</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:14px;">
+      <a href="data:text/csv;charset=utf-8,name,email,phone,website,address,location,notes%0AExample Business,contact@example.com,%2B1-555-000-0000,https://example.com,123 Main St,New York,Sample note"
+        download="leads_template.csv"
+        class="btn btn-secondary btn-sm">⬇ Download Template CSV</a>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

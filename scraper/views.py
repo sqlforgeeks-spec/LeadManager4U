@@ -6,8 +6,13 @@ from django.views.decorators.http import require_POST
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.db.models import Q
+from django.views.decorators.csrf import csrf_exempt
 
-from .models import BusinessListing, ScrapeJob, JobLog, EmailCampaign, EmailSend, SmtpProfile
+from .models import (
+    BusinessListing, ScrapeJob, JobLog, EmailCampaign, EmailSend,
+    SmtpProfile, ContactAttempt
+)
 from .scraper import scrape_google_maps, StopScrape, create_shared_drivers
 from .search_scraper import scrape_search_engine, StopScrape as SearchStopScrape
 from .bing_maps_scraper import scrape_bing_maps, StopScrape as BingStopScrape
@@ -17,6 +22,7 @@ from .domains import DOMAINS
 import threading
 import queue
 import time
+import io
 import pandas as pd
 
 MAX_RESULTS_CAP = 50000
@@ -42,7 +48,7 @@ def _start_scheduler():
 
 def _scheduler_loop():
     """Background thread: checks every 60s for campaigns ready to send."""
-    time.sleep(10)  # Small startup delay
+    time.sleep(10)
     while True:
         try:
             close_old_connections()
@@ -115,10 +121,7 @@ def _global_stats():
 
 
 def _ai_tips(stats):
-    """Generate contextual AI-powered tips based on current data."""
     tips = generate_smart_tips(stats)
-
-    # Add scheduled campaign tip
     scheduled = EmailCampaign.objects.filter(status="scheduled").count()
     if scheduled:
         tips.append({
@@ -126,8 +129,43 @@ def _ai_tips(stats):
             "type": "info",
             "text": f"{scheduled} campaign{'s' if scheduled > 1 else ''} scheduled and will send automatically.",
         })
+    return tips[:3]
 
-    return tips[:3]  # Max 3 tips
+
+def _get_notifications():
+    """Return follow-up reminders for the sidebar."""
+    from django.utils import timezone
+    from datetime import timedelta
+    now = timezone.now()
+    one_day_ago = now - timedelta(days=1)
+    seven_days_ago = now - timedelta(days=7)
+    notifs = []
+
+    # Leads contacted exactly 1 day ago — suggest same-day follow-up
+    contacted_yesterday = ContactAttempt.objects.filter(
+        contacted_at__date=one_day_ago.date()
+    ).values("listing_id").distinct().count()
+    if contacted_yesterday:
+        notifs.append({
+            "type": "warning",
+            "icon": "🔔",
+            "message": f"{contacted_yesterday} lead{'s' if contacted_yesterday > 1 else ''} contacted yesterday — follow up today!",
+            "url": "/leads/?contacted=1d",
+        })
+
+    # Leads contacted 7 days ago — weekly follow-up
+    contacted_week = ContactAttempt.objects.filter(
+        contacted_at__date=seven_days_ago.date()
+    ).values("listing_id").distinct().count()
+    if contacted_week:
+        notifs.append({
+            "type": "info",
+            "icon": "📅",
+            "message": f"{contacted_week} lead{'s' if contacted_week > 1 else ''} contacted 7 days ago — time to re-engage!",
+            "url": "/leads/?contacted=7d",
+        })
+
+    return notifs
 
 
 # ─── Dashboard ───────────────────────────────────────────────────────────────
@@ -135,7 +173,6 @@ def _ai_tips(stats):
 def home(request):
     if request.method == "POST":
         return _start_maps_job(request)
-
 
     recent_jobs = list(ScrapeJob.objects.order_by("-created_at")[:12])
     refresh_home = any(j.status in {"queued", "running", "paused"} for j in recent_jobs)
@@ -154,6 +191,7 @@ def home(request):
         "job_stats": job_stats,
         "global_stats": stats,
         "ai_tips": _ai_tips(stats),
+        "notifications": _get_notifications(),
         "active_page": "dashboard",
     })
 
@@ -203,7 +241,6 @@ def _start_maps_job(request):
 # ─── Maps Scraping ───────────────────────────────────────────────────────────
 
 def run_bing_maps_scrape(job_id, search_phrase, locations, max_results, auto_campaign=True):
-    """Background thread: scrape Bing Maps for all locations."""
     _set_job_active(job_id, True)
     close_old_connections()
     try:
@@ -530,7 +567,6 @@ def run_scrape(job_id, search_phrase, locations, domain, max_results, auto_campa
         job.save(update_fields=["status", "updated_at"])
         _log(job, f"Job {job.status.replace('_', ' ')}.")
 
-        # Auto-create email campaign draft if job has leads with emails
         if job.status in {"completed", "completed_with_errors"} and auto_campaign:
             _auto_create_campaign(job)
 
@@ -556,14 +592,13 @@ def run_scrape(job_id, search_phrase, locations, domain, max_results, auto_campa
 
 
 def _auto_create_campaign(job):
-    """Auto-create a draft email campaign when a scrape job completes."""
     try:
         close_old_connections()
         leads_with_email = BusinessListing.objects.filter(job=job).exclude(email="").count()
         if leads_with_email == 0:
             return
         if EmailCampaign.objects.filter(job_filter=job).exists():
-            return  # Already has a campaign
+            return
 
         campaign = EmailCampaign.objects.create(
             name=f"Campaign — {job.search_phrase} (auto)",
@@ -584,7 +619,6 @@ def _auto_create_campaign(job):
             status="draft",
             job_filter=job,
         )
-        # Pre-populate sends
         for listing in BusinessListing.objects.filter(job=job).exclude(email=""):
             EmailSend.objects.get_or_create(campaign=campaign, listing=listing)
 
@@ -601,7 +635,6 @@ def _auto_create_campaign(job):
 # ─── Search Engine Scraping ───────────────────────────────────────────────────
 
 def bing_maps_home(request):
-    """Dedicated Bing Maps scraper page."""
     if request.method == "POST":
         return _start_maps_job(request)
 
@@ -613,6 +646,7 @@ def bing_maps_home(request):
         "refresh_home": refresh_home,
         "global_stats": stats,
         "ai_tips": _ai_tips(stats),
+        "notifications": _get_notifications(),
         "active_page": "bing_maps",
     })
 
@@ -621,10 +655,11 @@ def search_home(request):
     if request.method == "POST":
         return _start_search_job(request)
 
-    recent_jobs = list(ScrapeJob.objects.exclude(source="maps").order_by("-created_at")[:12])
+    recent_jobs = list(ScrapeJob.objects.exclude(source__in=["maps", "bing_maps"]).order_by("-created_at")[:12])
     return render(request, "search_home.html", {
         "recent_jobs": recent_jobs,
         "global_stats": _global_stats(),
+        "notifications": _get_notifications(),
         "active_page": "search",
     })
 
@@ -674,7 +709,8 @@ def run_search_scrape(job_id, visit_pages=True):
         return
 
     email_cache = {}
-    email_cache_lock = __import__("threading").Lock()
+    email_cache_lock = threading.Lock()
+    seen_lock = threading.Lock()
 
     try:
         job.status = "running"
@@ -708,9 +744,10 @@ def run_search_scrape(job_id, visit_pages=True):
         def on_result(record):
             close_old_connections()
             key = record.get("website", "") or record.get("name", "")
-            if key in seen:
-                return
-            seen.add(key)
+            with seen_lock:
+                if key in seen:
+                    return
+                seen.add(key)
             _db_retry(
                 BusinessListing.objects.create,
                 job=job,
@@ -724,10 +761,16 @@ def run_search_scrape(job_id, visit_pages=True):
                 search_query=record.get("search_query", job.search_phrase),
                 location=record.get("location", job.locations),
             )
-            job.collected_listings = len(seen)
-            if record.get("email"):
-                job.emails_found = BusinessListing.objects.filter(job=job).exclude(email="").count()
-            job.save(update_fields=["collected_listings", "emails_found", "updated_at"])
+            # Update job stats safely (read-modify-write in main thread is fine here)
+            with seen_lock:
+                count = len(seen)
+            try:
+                ScrapeJob.objects.filter(id=job_id).update(
+                    collected_listings=count,
+                    updated_at=timezone.now(),
+                )
+            except Exception:
+                pass
 
         speed_to_workers = {"slow": 3, "normal": 6, "fast": 10}
         max_email_workers = speed_to_workers.get(job.speed, 6)
@@ -789,42 +832,102 @@ def search_job_detail(request, job_id):
         "can_resume": job.status in {"paused", "failed"},
         "is_paused": job.status == "paused",
         "global_stats": _global_stats(),
+        "notifications": _get_notifications(),
         "active_page": "search",
     })
 
 
 # ─── Leads ───────────────────────────────────────────────────────────────────
 
-def leads(request):
+def _build_leads_qs(request_get):
+    """Build the leads queryset from GET filter params. Returns (qs, filters_dict)."""
     qs = BusinessListing.objects.all()
 
-    source_filter = request.GET.get("source", "")
-    has_email = request.GET.get("has_email", "")
-    has_phone = request.GET.get("has_phone", "")
-    query = request.GET.get("q", "").strip()
-    job_id = request.GET.get("job_id", "")
+    source_filter = request_get.get("source", "")
+    has_email = request_get.get("has_email", "")
+    has_phone = request_get.get("has_phone", "")
+    has_website = request_get.get("has_website", "")
+    query = request_get.get("q", "").strip()
+    job_id = request_get.get("job_id", "")
+    location_filter = request_get.get("location", "").strip()
+    contacted_filter = request_get.get("contacted", "")
 
     if source_filter:
         qs = qs.filter(source=source_filter)
     if has_email == "1":
         qs = qs.exclude(email="")
-    if has_email == "0":
+    elif has_email == "0":
         qs = qs.filter(email="")
     if has_phone == "1":
         qs = qs.exclude(phone="")
+    elif has_phone == "0":
+        qs = qs.filter(phone="")
+    if has_website == "1":
+        qs = qs.exclude(website="")
+    elif has_website == "0":
+        qs = qs.filter(website="")
     if job_id:
         qs = qs.filter(job_id=job_id)
+    if location_filter:
+        qs = qs.filter(location__icontains=location_filter)
     if query:
-        from django.db.models import Q
         qs = qs.filter(
             Q(name__icontains=query) |
             Q(email__icontains=query) |
             Q(phone__icontains=query) |
             Q(website__icontains=query) |
-            Q(location__icontains=query)
+            Q(location__icontains=query) |
+            Q(address__icontains=query) |
+            Q(search_query__icontains=query)
         )
 
-    listings = qs.order_by("-scraped_at")[:2000]
+    # Contacted filter
+    if contacted_filter == "1d":
+        from datetime import timedelta
+        one_day_ago = timezone.now() - timedelta(days=1)
+        contacted_ids = ContactAttempt.objects.filter(
+            contacted_at__date=one_day_ago.date()
+        ).values_list("listing_id", flat=True)
+        qs = qs.filter(id__in=contacted_ids)
+    elif contacted_filter == "7d":
+        from datetime import timedelta
+        seven_days_ago = timezone.now() - timedelta(days=7)
+        contacted_ids = ContactAttempt.objects.filter(
+            contacted_at__date=seven_days_ago.date()
+        ).values_list("listing_id", flat=True)
+        qs = qs.filter(id__in=contacted_ids)
+    elif contacted_filter == "never":
+        contacted_ids = ContactAttempt.objects.values_list("listing_id", flat=True).distinct()
+        qs = qs.exclude(id__in=contacted_ids)
+    elif contacted_filter == "any":
+        contacted_ids = ContactAttempt.objects.values_list("listing_id", flat=True).distinct()
+        qs = qs.filter(id__in=contacted_ids)
+
+    filters = {
+        "source": source_filter,
+        "has_email": has_email,
+        "has_phone": has_phone,
+        "has_website": has_website,
+        "q": query,
+        "job_id": job_id,
+        "location": location_filter,
+        "contacted": contacted_filter,
+    }
+    return qs, filters
+
+
+def leads(request):
+    qs, filters = _build_leads_qs(request.GET)
+
+    listings = list(qs.order_by("-scraped_at")[:2000].prefetch_related("contact_attempts"))
+
+    # Attach last contact info (no underscore prefix — Django templates reject those)
+    for listing in listings:
+        attempts = list(listing.contact_attempts.all()[:3])
+        listing.recent_attempts = attempts
+        listing.last_contact_info = attempts[0] if attempts else None
+        listing.contact_total = len(attempts)
+
     stats = {
         "total": BusinessListing.objects.count(),
         "with_phone": BusinessListing.objects.exclude(phone="").count(),
@@ -836,15 +939,180 @@ def leads(request):
         "listings": listings,
         "stats": stats,
         "jobs_for_filter": jobs_for_filter,
-        "filters": {
-            "source": source_filter,
-            "has_email": has_email,
-            "has_phone": has_phone,
-            "q": query,
-            "job_id": job_id,
-        },
+        "filters": filters,
         "global_stats": _global_stats(),
+        "notifications": _get_notifications(),
         "active_page": "leads",
+    })
+
+
+# ─── Lead contact logging ─────────────────────────────────────────────────────
+
+@require_POST
+def log_contact(request, listing_id):
+    listing = get_object_or_404(BusinessListing, id=listing_id)
+    channel = request.POST.get("channel", "email")
+    notes = request.POST.get("notes", "").strip()
+    if channel not in {"email", "gmail", "whatsapp", "telegram", "call"}:
+        channel = "email"
+    ContactAttempt.objects.create(listing=listing, channel=channel, notes=notes)
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return JsonResponse({"ok": True, "channel": channel})
+    return _redirect_back(request, reverse("leads"))
+
+
+def api_lead_contacts(request, listing_id):
+    listing = get_object_or_404(BusinessListing, id=listing_id)
+    attempts = ContactAttempt.objects.filter(listing=listing).order_by("-contacted_at")[:50]
+    data = [
+        {
+            "id": a.id,
+            "channel": a.channel,
+            "contacted_at": timezone.localtime(a.contacted_at).strftime("%Y-%m-%d %H:%M"),
+            "notes": a.notes,
+        }
+        for a in attempts
+    ]
+    return JsonResponse({"contacts": data, "total": len(data)})
+
+
+def api_notifications(request):
+    return JsonResponse({"notifications": _get_notifications()})
+
+
+# ─── Upload leads ─────────────────────────────────────────────────────────────
+
+def upload_leads(request):
+    if request.method == "POST":
+        uploaded_file = request.FILES.get("file")
+        if not uploaded_file:
+            return render(request, "upload_leads.html", {
+                "error": "No file selected.",
+                "global_stats": _global_stats(),
+                "notifications": _get_notifications(),
+                "active_page": "leads",
+            })
+
+        name = uploaded_file.name.lower()
+        try:
+            content = uploaded_file.read()
+            if name.endswith(".csv"):
+                df = pd.read_csv(io.BytesIO(content), dtype=str)
+            elif name.endswith((".xlsx", ".xls")):
+                df = pd.read_excel(io.BytesIO(content), dtype=str)
+            else:
+                return render(request, "upload_leads.html", {
+                    "error": "Unsupported file format. Please upload CSV, XLSX, or XLS.",
+                    "global_stats": _global_stats(),
+                    "notifications": _get_notifications(),
+                    "active_page": "leads",
+                })
+        except Exception as exc:
+            return render(request, "upload_leads.html", {
+                "error": f"Could not read file: {exc}",
+                "global_stats": _global_stats(),
+                "notifications": _get_notifications(),
+                "active_page": "leads",
+            })
+
+        # Normalize column names
+        df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
+
+        FIELD_ALIASES = {
+            "name": ["name", "business_name", "company", "company_name", "business", "title"],
+            "email": ["email", "email_address", "e_mail", "mail"],
+            "phone": ["phone", "phone_number", "mobile", "telephone", "tel", "contact"],
+            "website": ["website", "url", "web", "site", "domain"],
+            "address": ["address", "location_address", "full_address", "street"],
+            "location": ["location", "city", "city_state", "area", "region", "country"],
+            "notes": ["notes", "note", "comments", "remark", "remarks"],
+        }
+
+        def find_col(field):
+            for alias in FIELD_ALIASES[field]:
+                if alias in df.columns:
+                    return alias
+            return None
+
+        col_map = {field: find_col(field) for field in FIELD_ALIASES}
+
+        def get_val(row, field, default=""):
+            col = col_map.get(field)
+            if col and col in row and pd.notna(row[col]):
+                return str(row[col]).strip()
+            return default
+
+        created = 0
+        skipped = 0
+        source_label = request.POST.get("source_label", "uploaded").strip() or "uploaded"
+
+        for _, row in df.iterrows():
+            name_val = get_val(row, "name") or get_val(row, "website") or "Unknown"
+            email_val = get_val(row, "email")
+            phone_val = get_val(row, "phone")
+            website_val = get_val(row, "website")
+
+            # Skip completely empty rows
+            if not any([name_val, email_val, phone_val, website_val]):
+                skipped += 1
+                continue
+
+            # Basic email validation
+            if email_val and "@" not in email_val:
+                email_val = ""
+
+            try:
+                BusinessListing.objects.create(
+                    name=name_val[:255],
+                    email=email_val[:254] if email_val else "",
+                    phone=phone_val[:50] if phone_val else "",
+                    website=website_val[:500] if website_val else "",
+                    address=get_val(row, "address")[:500],
+                    location=get_val(row, "location")[:255] or source_label,
+                    search_query=f"uploaded:{source_label}",
+                    source="uploaded",
+                    notes=get_val(row, "notes"),
+                    job=None,
+                )
+                created += 1
+            except Exception:
+                skipped += 1
+
+        column_guide = {
+            "name": ["name", "business_name", "company", "company_name", "business", "title"],
+            "email": ["email", "email_address", "e_mail", "mail"],
+            "phone": ["phone", "phone_number", "mobile", "telephone", "tel", "contact"],
+            "website": ["website", "url", "web", "site", "domain"],
+            "address": ["address", "location_address", "full_address", "street"],
+            "location": ["location", "city", "city_state", "area", "region", "country"],
+            "notes": ["notes", "note", "comments", "remark", "remarks"],
+        }
+        return render(request, "upload_leads.html", {
+            "success": True,
+            "created": created,
+            "skipped": skipped,
+            "global_stats": _global_stats(),
+            "notifications": _get_notifications(),
+            "active_page": "leads",
+            "detected_columns": list(df.columns),
+            "mapped_columns": {k: v for k, v in col_map.items() if v},
+            "column_guide": column_guide,
+        })
+
+    column_guide = {
+        "name": ["name", "business_name", "company", "company_name", "business", "title"],
+        "email": ["email", "email_address", "e_mail", "mail"],
+        "phone": ["phone", "phone_number", "mobile", "telephone", "tel", "contact"],
+        "website": ["website", "url", "web", "site", "domain"],
+        "address": ["address", "location_address", "full_address", "street"],
+        "location": ["location", "city", "city_state", "area", "region", "country"],
+        "notes": ["notes", "note", "comments", "remark", "remarks"],
+    }
+    return render(request, "upload_leads.html", {
+        "global_stats": _global_stats(),
+        "notifications": _get_notifications(),
+        "active_page": "leads",
+        "column_guide": column_guide,
     })
 
 
@@ -875,6 +1143,7 @@ def job_detail(request, job_id):
         "recent_jobs": recent_jobs,
         "auto_campaign": auto_campaign,
         "global_stats": _global_stats(),
+        "notifications": _get_notifications(),
         "active_page": "dashboard",
     })
 
@@ -886,6 +1155,7 @@ def smtp_profiles(request):
     return render(request, "smtp_profiles.html", {
         "profiles": profiles,
         "global_stats": _global_stats(),
+        "notifications": _get_notifications(),
         "active_page": "smtp",
     })
 
@@ -914,7 +1184,6 @@ def delete_smtp_profile(request, profile_id):
 
 
 def api_smtp_profile(request, profile_id):
-    """Return SMTP profile fields as JSON (for auto-filling campaign form)."""
     profile = get_object_or_404(SmtpProfile, id=profile_id)
     return JsonResponse({
         "host": profile.host,
@@ -933,6 +1202,7 @@ def campaigns(request):
         "campaigns": campaign_list,
         "smtp_profiles": smtp_profiles_qs,
         "global_stats": _global_stats(),
+        "notifications": _get_notifications(),
         "active_page": "campaigns",
     })
 
@@ -941,6 +1211,7 @@ def new_campaign(request):
     jobs = ScrapeJob.objects.filter(status__in=["completed", "completed_with_errors"]).order_by("-created_at")
     smtp_profiles_qs = SmtpProfile.objects.all()
     prefill_job_id = request.GET.get("job_id", "")
+    prefill_listing_ids = request.GET.get("listing_ids", "")
 
     if request.method == "POST":
         name = request.POST.get("name", "").strip()
@@ -954,6 +1225,7 @@ def new_campaign(request):
         smtp_password = request.POST.get("smtp_password", "").strip()
         use_tls = request.POST.get("use_tls", "on") == "on"
         job_filter_id = request.POST.get("job_filter", "")
+        listing_ids_raw = request.POST.get("listing_ids", "").strip()
         try:
             smtp_port = int(request.POST.get("smtp_port", "587"))
         except ValueError:
@@ -974,19 +1246,49 @@ def new_campaign(request):
             job_filter=job_filter,
         )
 
-        qs = BusinessListing.objects.exclude(email="")
-        if job_filter:
-            qs = qs.filter(job=job_filter)
+        # If specific listing IDs provided, use only those
+        if listing_ids_raw:
+            try:
+                ids = [int(x.strip()) for x in listing_ids_raw.split(",") if x.strip().isdigit()]
+                qs = BusinessListing.objects.filter(id__in=ids).exclude(email="")
+            except Exception:
+                qs = BusinessListing.objects.none()
+        else:
+            qs = BusinessListing.objects.exclude(email="")
+            if job_filter:
+                qs = qs.filter(job=job_filter)
+
         for listing in qs:
             EmailSend.objects.get_or_create(campaign=campaign, listing=listing)
 
+        # Auto-log contact attempt for all recipients
+        for send in campaign.sends.select_related("listing"):
+            ContactAttempt.objects.create(
+                listing=send.listing,
+                channel="email",
+                campaign=campaign,
+                notes=f"Added to campaign: {campaign.name}",
+            )
+
         return redirect("campaign_detail", campaign_id=campaign.id)
+
+    # Pre-load selected listing IDs if coming from leads page
+    prefill_listings = []
+    if prefill_listing_ids:
+        try:
+            ids = [int(x.strip()) for x in prefill_listing_ids.split(",") if x.strip().isdigit()]
+            prefill_listings = list(BusinessListing.objects.filter(id__in=ids)[:200])
+        except Exception:
+            pass
 
     return render(request, "new_campaign.html", {
         "jobs": jobs,
         "smtp_profiles": smtp_profiles_qs,
         "prefill_job_id": prefill_job_id,
+        "prefill_listing_ids": prefill_listing_ids,
+        "prefill_listings": prefill_listings,
         "global_stats": _global_stats(),
+        "notifications": _get_notifications(),
         "active_page": "campaigns",
     })
 
@@ -998,6 +1300,7 @@ def campaign_detail(request, campaign_id):
         "campaign": campaign,
         "sends": sends,
         "global_stats": _global_stats(),
+        "notifications": _get_notifications(),
         "active_page": "campaigns",
     })
 
@@ -1022,12 +1325,11 @@ def stop_campaign_view(request, campaign_id):
 
 @require_POST
 def resend_campaign(request, campaign_id):
-    """Reset failed/skipped (or all) sends back to pending and re-launch."""
     campaign = get_object_or_404(EmailCampaign, id=campaign_id)
     if campaign.status in {"sending"}:
         return redirect("campaign_detail", campaign_id=campaign_id)
 
-    resend_mode = request.POST.get("resend_mode", "failed")  # "failed" or "all"
+    resend_mode = request.POST.get("resend_mode", "failed")
     if resend_mode == "all":
         campaign.sends.update(status="pending", error="")
     else:
@@ -1044,17 +1346,14 @@ def resend_campaign(request, campaign_id):
 
 @require_POST
 def schedule_campaign(request, campaign_id):
-    """Schedule a campaign to send at a specific datetime."""
     campaign = get_object_or_404(EmailCampaign, id=campaign_id)
     from django.utils.dateparse import parse_datetime
     scheduled_str = request.POST.get("scheduled_at", "").strip()
     if scheduled_str:
         try:
-            # Accept datetime-local format: "2025-07-22T14:30"
             from datetime import datetime
             import pytz
             dt = datetime.strptime(scheduled_str, "%Y-%m-%dT%H:%M")
-            # Make timezone aware (use server timezone)
             try:
                 from django.conf import settings as djsettings
                 tz = pytz.timezone(djsettings.TIME_ZONE)
@@ -1094,7 +1393,7 @@ def delete_job(request, job_id):
         return _redirect_back(request, reverse("home"))
     source = job.source
     job.delete()
-    if source == "maps":
+    if source in {"maps", "bing_maps"}:
         return redirect("home")
     return redirect("search_home")
 
@@ -1239,19 +1538,31 @@ def _csv_response(qs_values, filename):
 
 
 def download_csv(request):
-    return _csv_response(list(BusinessListing.objects.all().values()), "leads_all.csv")
+    """Download with optional filters applied."""
+    qs, _ = _build_leads_qs(request.GET)
+    values = list(qs.values(
+        "id", "name", "email", "phone", "website", "address",
+        "location", "source", "search_query", "scraped_at"
+    ))
+    return _csv_response(values, "leads_filtered.csv")
 
 
 def download_phone_csv(request):
-    return _csv_response([{"phone": v} for v in BusinessListing.objects.values_list("phone", flat=True)], "leads_phones.csv")
+    qs, _ = _build_leads_qs(request.GET)
+    qs = qs.exclude(phone="")
+    return _csv_response([{"name": v[0], "phone": v[1]} for v in qs.values_list("name", "phone")], "leads_phones.csv")
 
 
 def download_email_csv(request):
-    return _csv_response([{"email": v} for v in BusinessListing.objects.values_list("email", flat=True)], "leads_emails.csv")
+    qs, _ = _build_leads_qs(request.GET)
+    qs = qs.exclude(email="")
+    return _csv_response([{"name": v[0], "email": v[1]} for v in qs.values_list("name", "email")], "leads_emails.csv")
 
 
 def download_website_csv(request):
-    return _csv_response([{"website": v} for v in BusinessListing.objects.values_list("website", flat=True)], "leads_websites.csv")
+    qs, _ = _build_leads_qs(request.GET)
+    qs = qs.exclude(website="")
+    return _csv_response([{"name": v[0], "website": v[1]} for v in qs.values_list("name", "website")], "leads_websites.csv")
 
 
 def download_job_csv(request, job_id):
@@ -1286,7 +1597,6 @@ def results(request):
 # ─── AI Feature Endpoints ─────────────────────────────────────────────────────
 
 def api_ai_templates(request):
-    """Generate AI email templates for a search phrase."""
     search_phrase = request.GET.get("q", "").strip()
     if not search_phrase:
         return JsonResponse({"templates": [], "industry": "default"})
@@ -1297,7 +1607,6 @@ def api_ai_templates(request):
 
 
 def api_lead_scores(request):
-    """Return AI lead scores for all leads (or a job's leads)."""
     job_id = request.GET.get("job_id", "")
     qs = BusinessListing.objects.all()
     if job_id:
@@ -1310,3 +1619,14 @@ def api_lead_scores(request):
                         "website": lead.website, "address": lead.address})
         scores.append({"id": lead.id, "score": s, "label": score_lead_label(s)})
     return JsonResponse({"scores": scores})
+
+
+# ─── Create campaign from selected leads ─────────────────────────────────────
+
+@require_POST
+def create_campaign_from_selection(request):
+    """Create a campaign with only the selected lead IDs."""
+    ids_raw = request.POST.get("listing_ids", "").strip()
+    if not ids_raw:
+        return redirect("leads")
+    return redirect(f"/campaigns/new/?listing_ids={ids_raw}")

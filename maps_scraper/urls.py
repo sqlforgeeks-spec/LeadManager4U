@@ -18,6 +18,9 @@ urlpatterns = [
     # Leads
     path('leads/', views.leads, name='leads'),
     path('leads/<int:listing_id>/delete/', views.delete_lead, name='delete_lead'),
+    path('leads/<int:listing_id>/contact/', views.log_contact, name='log_contact'),
+    path('leads/upload/', views.upload_leads, name='upload_leads'),
+    path('leads/campaign-from-selection/', views.create_campaign_from_selection, name='campaign_from_selection'),
     path('results/', views.results, name='results'),  # legacy redirect
 
     # Email campaigns
@@ -37,7 +40,7 @@ urlpatterns = [
     path('smtp/<int:profile_id>/delete/', views.delete_smtp_profile, name='delete_smtp_profile'),
     path('api/smtp/<int:profile_id>/', views.api_smtp_profile, name='api_smtp_profile'),
 
-    # Downloads – all leads
+    # Downloads – all leads (support filter params via GET)
     path('download/', views.download_csv, name='download_csv'),
     path('download/phone/', views.download_phone_csv, name='download_phone_csv'),
     path('download/email/', views.download_email_csv, name='download_email_csv'),
@@ -48,6 +51,8 @@ urlpatterns = [
     path('api/jobs/<int:job_id>/', views.api_job_status, name='api_job_status'),
     path('api/ai/templates/', views.api_ai_templates, name='api_ai_templates'),
     path('api/ai/scores/', views.api_lead_scores, name='api_lead_scores'),
+    path('api/lead/<int:listing_id>/contacts/', views.api_lead_contacts, name='api_lead_contacts'),
+    path('api/notifications/', views.api_notifications, name='api_notifications'),
 
     # Job detail & controls (maps)
     path('jobs/<int:job_id>/', views.job_detail, name='job_detail'),

@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 
 class SmtpProfile(models.Model):
@@ -120,6 +121,7 @@ class BusinessListing(models.Model):
     search_query = models.CharField(max_length=255)
     location = models.CharField(max_length=255)
     source = models.CharField(max_length=32, default="maps")
+    notes = models.TextField(blank=True, help_text="Internal notes about this lead")
     scraped_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -127,6 +129,47 @@ class BusinessListing(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def last_contact(self):
+        return self.contact_attempts.first()
+
+    @property
+    def contact_count(self):
+        return self.contact_attempts.count()
+
+    @property
+    def days_since_last_contact(self):
+        lc = self.last_contact
+        if not lc:
+            return None
+        delta = timezone.now() - lc.contacted_at
+        return delta.days
+
+
+class ContactAttempt(models.Model):
+    CHANNEL_CHOICES = [
+        ("email", "Email"),
+        ("gmail", "Gmail"),
+        ("whatsapp", "WhatsApp"),
+        ("telegram", "Telegram"),
+        ("call", "Call"),
+    ]
+
+    listing = models.ForeignKey(BusinessListing, on_delete=models.CASCADE, related_name="contact_attempts")
+    channel = models.CharField(max_length=20, choices=CHANNEL_CHOICES, default="email")
+    contacted_at = models.DateTimeField(auto_now_add=True)
+    notes = models.TextField(blank=True)
+    campaign = models.ForeignKey(
+        'EmailCampaign', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="contact_attempts"
+    )
+
+    class Meta:
+        ordering = ['-contacted_at']
+
+    def __str__(self):
+        return f"{self.listing.name} via {self.channel}"
 
 
 class EmailCampaign(models.Model):

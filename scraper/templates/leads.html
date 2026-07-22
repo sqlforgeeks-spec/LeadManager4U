@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Leads{% endblock %}
+{% block title %}All Leads{% endblock %}
 {% block topbar_title %}All Leads{% endblock %}
 
 {% block topbar_actions %}
-  <a href="{% url 'download_csv' %}" class="btn btn-primary btn-sm">⬇ Export All CSV</a>
-  <a href="{% url 'new_campaign' %}" class="btn btn-secondary btn-sm">✉ New Campaign</a>
+  <a href="{% url 'upload_leads' %}" class="btn btn-secondary btn-sm">⬆ Import CSV/Excel</a>
+  <a href="{% url 'new_campaign' %}" class="btn btn-primary btn-sm">✉ New Campaign</a>
 {% endblock %}
 
 {% block content %}
@@ -31,92 +31,237 @@
 </div>
 
 <!-- Filters -->
-<form method="get" action="{% url 'leads' %}">
-  <div class="toolbar mb-16" style="flex-wrap:wrap; gap:10px;">
-    <div class="toolbar-search">
-      <input type="text" name="q" class="form-input" placeholder="Search name, email, phone, website…" value="{{ filters.q }}">
-      <button type="submit" class="btn btn-primary btn-sm">Search</button>
-    </div>
-    <div class="toolbar-filters">
-      <select name="source" class="form-select" style="min-width:150px;" onchange="this.form.submit()">
-        <option value="">All Sources</option>
-        <option value="maps" {% if filters.source == "maps" %}selected{% endif %}>🗺️ Google Maps</option>
-        <option value="bing_maps" {% if filters.source == "bing_maps" %}selected{% endif %}>🅱️ Bing Maps</option>
-        <option value="google" {% if filters.source == "google" %}selected{% endif %}>🔍 Google Search</option>
-        <option value="bing" {% if filters.source == "bing" %}selected{% endif %}>Ⓑ Bing</option>
-        <option value="yahoo" {% if filters.source == "yahoo" %}selected{% endif %}>Y! Yahoo</option>
-        <option value="duckduckgo" {% if filters.source == "duckduckgo" %}selected{% endif %}>🦆 DuckDuckGo</option>
-        <option value="yandex" {% if filters.source == "yandex" %}selected{% endif %}>Я Yandex</option>
-        <option value="ecosia" {% if filters.source == "ecosia" %}selected{% endif %}>🌿 Ecosia</option>
-        <option value="ask" {% if filters.source == "ask" %}selected{% endif %}>❓ Ask.com</option>
-      </select>
-      <select name="has_email" class="form-select" style="min-width:140px;" onchange="this.form.submit()">
-        <option value="">Any Email</option>
-        <option value="1" {% if filters.has_email == "1" %}selected{% endif %}>Has Email</option>
-        <option value="0" {% if filters.has_email == "0" %}selected{% endif %}>No Email</option>
-      </select>
-      <select name="has_phone" class="form-select" style="min-width:140px;" onchange="this.form.submit()">
-        <option value="">Any Phone</option>
-        <option value="1" {% if filters.has_phone == "1" %}selected{% endif %}>Has Phone</option>
-      </select>
-      <select name="job_id" class="form-select" style="min-width:160px;" onchange="this.form.submit()">
-        <option value="">All Jobs</option>
-        {% for job in jobs_for_filter %}
-          <option value="{{ job.id }}" {% if filters.job_id == job.id|stringformat:"s" %}selected{% endif %}>
-            #{{ job.id }} {{ job.search_phrase|truncatechars:30 }}
-          </option>
-        {% endfor %}
-      </select>
-      {% if filters.q or filters.source or filters.has_email or filters.has_phone or filters.job_id %}
-        <a href="{% url 'leads' %}" class="btn btn-ghost btn-sm">✕ Clear</a>
-      {% endif %}
+<form method="get" action="{% url 'leads' %}" id="filter-form">
+  <div class="card mb-16" style="padding:16px;">
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+      <div style="flex:1;min-width:200px;">
+        <label class="form-label">Search</label>
+        <input type="text" name="q" class="form-input" placeholder="Name, email, phone, website, address…" value="{{ filters.q }}">
+      </div>
+      <div style="min-width:140px;">
+        <label class="form-label">Source</label>
+        <select name="source" class="form-select" onchange="this.form.submit()">
+          <option value="">All Sources</option>
+          <option value="maps" {% if filters.source == "maps" %}selected{% endif %}>🗺️ Google Maps</option>
+          <option value="bing_maps" {% if filters.source == "bing_maps" %}selected{% endif %}>🅱️ Bing Maps</option>
+          <option value="google" {% if filters.source == "google" %}selected{% endif %}>🔍 Google Search</option>
+          <option value="bing" {% if filters.source == "bing" %}selected{% endif %}>Ⓑ Bing</option>
+          <option value="yahoo" {% if filters.source == "yahoo" %}selected{% endif %}>Y! Yahoo</option>
+          <option value="duckduckgo" {% if filters.source == "duckduckgo" %}selected{% endif %}>🦆 DuckDuckGo</option>
+          <option value="yandex" {% if filters.source == "yandex" %}selected{% endif %}>Я Yandex</option>
+          <option value="ecosia" {% if filters.source == "ecosia" %}selected{% endif %}>🌿 Ecosia</option>
+          <option value="ask" {% if filters.source == "ask" %}selected{% endif %}>❓ Ask</option>
+          <option value="uploaded" {% if filters.source == "uploaded" %}selected{% endif %}>⬆ Uploaded</option>
+        </select>
+      </div>
+      <div style="min-width:130px;">
+        <label class="form-label">Email</label>
+        <select name="has_email" class="form-select" onchange="this.form.submit()">
+          <option value="">Any</option>
+          <option value="1" {% if filters.has_email == "1" %}selected{% endif %}>Has Email</option>
+          <option value="0" {% if filters.has_email == "0" %}selected{% endif %}>No Email</option>
+        </select>
+      </div>
+      <div style="min-width:130px;">
+        <label class="form-label">Phone</label>
+        <select name="has_phone" class="form-select" onchange="this.form.submit()">
+          <option value="">Any</option>
+          <option value="1" {% if filters.has_phone == "1" %}selected{% endif %}>Has Phone</option>
+          <option value="0" {% if filters.has_phone == "0" %}selected{% endif %}>No Phone</option>
+        </select>
+      </div>
+      <div style="min-width:130px;">
+        <label class="form-label">Website</label>
+        <select name="has_website" class="form-select" onchange="this.form.submit()">
+          <option value="">Any</option>
+          <option value="1" {% if filters.has_website == "1" %}selected{% endif %}>Has Website</option>
+          <option value="0" {% if filters.has_website == "0" %}selected{% endif %}>No Website</option>
+        </select>
+      </div>
+      <div style="min-width:140px;">
+        <label class="form-label">Contacted</label>
+        <select name="contacted" class="form-select" onchange="this.form.submit()">
+          <option value="">All</option>
+          <option value="never" {% if filters.contacted == "never" %}selected{% endif %}>Never Contacted</option>
+          <option value="any" {% if filters.contacted == "any" %}selected{% endif %}>Contacted Before</option>
+          <option value="1d" {% if filters.contacted == "1d" %}selected{% endif %}>Yesterday</option>
+          <option value="7d" {% if filters.contacted == "7d" %}selected{% endif %}>7 Days Ago</option>
+        </select>
+      </div>
+      <div style="min-width:150px;">
+        <label class="form-label">Job</label>
+        <select name="job_id" class="form-select" onchange="this.form.submit()">
+          <option value="">All Jobs</option>
+          {% for job in jobs_for_filter %}
+            <option value="{{ job.id }}" {% if filters.job_id == job.id|stringformat:"s" %}selected{% endif %}>
+              #{{ job.id }} {{ job.search_phrase|truncatechars:25 }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div style="min-width:140px;">
+        <label class="form-label">Location</label>
+        <input type="text" name="location" class="form-input" placeholder="Filter by location…" value="{{ filters.location }}">
+      </div>
+      <div style="display:flex;gap:8px;align-items:flex-end;">
+        <button type="submit" class="btn btn-primary btn-sm">🔍 Search</button>
+        {% if filters.q or filters.source or filters.has_email or filters.has_phone or filters.has_website or filters.job_id or filters.location or filters.contacted %}
+          <a href="{% url 'leads' %}" class="btn btn-ghost btn-sm">✕ Clear</a>
+        {% endif %}
+      </div>
     </div>
   </div>
 </form>
 
-<!-- Downloads -->
-<div class="download-strip mb-16">
-  <a class="download-btn" href="{% url 'download_csv' %}">⬇ All CSV</a>
-  <a class="download-btn" href="{% url 'download_email_csv' %}">✉ Emails CSV</a>
-  <a class="download-btn" href="{% url 'download_phone_csv' %}">📞 Phones CSV</a>
-  <a class="download-btn" href="{% url 'download_website_csv' %}">🌐 Websites CSV</a>
+<!-- Downloads with current filters -->
+<div class="download-strip mb-16" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+  <span style="font-size:12px;color:#888;margin-right:4px;">Export filtered:</span>
+  <a class="download-btn" href="{% url 'download_csv' %}?{{ request.GET.urlencode }}">⬇ All CSV</a>
+  <a class="download-btn" href="{% url 'download_email_csv' %}?{{ request.GET.urlencode }}">✉ Emails CSV</a>
+  <a class="download-btn" href="{% url 'download_phone_csv' %}?{{ request.GET.urlencode }}">📞 Phones CSV</a>
+  <a class="download-btn" href="{% url 'download_website_csv' %}?{{ request.GET.urlencode }}">🌐 Websites CSV</a>
 </div>
 
 {% if listings %}
+<!-- Selection toolbar -->
+<form method="post" action="{% url 'campaign_from_selection' %}" id="selection-form">
+  {% csrf_token %}
+  <input type="hidden" name="listing_ids" id="selected-ids-input" value="">
+  <div id="selection-bar" style="display:none;background:linear-gradient(135deg,#1e3a5f,#1a5276);border-radius:10px;padding:12px 18px;margin-bottom:14px;display:none;align-items:center;gap:14px;flex-wrap:wrap;">
+    <span id="sel-count" style="color:#fff;font-weight:600;font-size:14px;">0 selected</span>
+    <button type="submit" class="btn btn-success btn-sm">✉ Email Selected</button>
+    <button type="button" class="btn btn-ghost btn-sm" style="color:#ccc;" onclick="clearSelection()">✕ Clear</button>
+    <span style="color:#aaa;font-size:12px;">Selected leads will be pre-loaded into a new campaign</span>
+  </div>
+</form>
+
 <div class="card">
-  <div class="card-header">
-    <div class="card-title">{{ listings|length }} leads shown (max 2000)</div>
-    <input type="text" class="form-input" style="max-width:250px;" placeholder="Filter visible rows…" oninput="filterTable('leads-table', this.value)">
+  <div class="card-header" style="flex-wrap:wrap;gap:8px;">
+    <div class="card-title">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
+        <input type="checkbox" id="select-all-chk" onchange="toggleSelectAll(this)" style="width:15px;height:15px;cursor:pointer;">
+        <span>{{ listings|length }} leads shown</span>
+      </label>
+    </div>
+    <input type="text" class="form-input" style="max-width:220px;" placeholder="Filter visible rows…" oninput="filterTable('leads-table', this.value)">
   </div>
   <div class="table-wrap">
     <table class="table" id="leads-table">
       <thead>
         <tr>
-          <th>Business Name</th>
+          <th style="width:32px;"></th>
+          <th>Business</th>
           <th>Phone</th>
           <th>Email</th>
           <th>Website</th>
           <th>Location</th>
-          <th>Source</th>
-          <th>Query</th>
+          <th>Contacted</th>
+          <th>Reach Out</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody>
         {% for listing in listings %}
-        <tr>
-          <td><strong>{{ listing.name }}</strong></td>
-          <td>{% if listing.phone %}<span class="font-mono">{{ listing.phone }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
-          <td>{% if listing.email %}<span class="truncate text-primary" title="{{ listing.email }}">{{ listing.email }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
-          <td>{% if listing.website %}<a href="{{ listing.website }}" target="_blank" rel="noopener" class="text-primary">Visit ↗</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
-          <td class="text-muted">{{ listing.location }}</td>
-          <td><span class="source-tag">{{ listing.source }}</span></td>
-          <td class="text-muted" style="max-width:160px;"><span class="truncate" title="{{ listing.search_query }}">{{ listing.search_query }}</span></td>
+        <tr data-id="{{ listing.id }}">
+          <td class="no-row-click" style="text-align:center;">
+            <input type="checkbox" class="lead-chk" value="{{ listing.id }}" onchange="updateSelection()" style="width:15px;height:15px;cursor:pointer;">
+          </td>
+          <td>
+            <div style="font-weight:600;font-size:13px;">{{ listing.name }}</div>
+            {% if listing.address %}<div style="font-size:11px;color:#888;margin-top:2px;">{{ listing.address|truncatechars:50 }}</div>{% endif %}
+            <div style="font-size:11px;color:#aaa;">{{ listing.source }}</div>
+          </td>
+          <td>
+            {% if listing.phone %}
+              <span class="font-mono" style="font-size:12px;">{{ listing.phone }}</span>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if listing.email %}
+              <span class="truncate text-primary" title="{{ listing.email }}" style="font-size:12px;max-width:170px;display:block;">{{ listing.email }}</span>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if listing.website %}
+              <a href="{{ listing.website }}" target="_blank" rel="noopener" class="text-primary" style="font-size:12px;">Visit ↗</a>
+            {% else %}
+              <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td class="text-muted" style="font-size:12px;">{{ listing.location }}</td>
+          <td style="min-width:100px;">
+            {% if listing.last_contact_info %}
+              <div style="font-size:11px;">
+                <span class="badge" style="background:#e8f5e9;color:#2e7d32;font-size:10px;padding:2px 6px;">{{ listing.last_contact_info.channel }}</span>
+                <div style="color:#888;margin-top:2px;">{{ listing.last_contact_info.contacted_at|timesince }} ago</div>
+                <div style="color:#888;">{{ listing.contact_total }} total</div>
+              </div>
+            {% else %}
+              <span style="font-size:11px;color:#bbb;">Not yet</span>
+            {% endif %}
+          </td>
+          <!-- Quick reach-out icons -->
+          <td class="no-row-click" style="min-width:130px;">
+            <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;">
+              <!-- Email -->
+              {% if listing.email %}
+              <button class="icon-btn icon-email" title="Log Email contact"
+                onclick="logContact({{ listing.id }}, 'email', '{{ listing.email }}')"
+                style="background:#e3f2fd;color:#1565c0;">
+                <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor"><path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"/><path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"/></svg>
+              </button>
+              <!-- Gmail -->
+              <a class="icon-btn icon-gmail" title="Open Gmail"
+                href="https://mail.google.com/mail/?view=cm&to={{ listing.email }}&su=Hi+{{ listing.name|urlencode }}"
+                target="_blank" rel="noopener"
+                onclick="logContactSilent({{ listing.id }}, 'gmail')"
+                style="background:#fce4ec;color:#c62828;text-decoration:none;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+              </a>
+              {% endif %}
+              <!-- WhatsApp -->
+              {% if listing.phone %}
+              <a class="icon-btn icon-wa" title="Open WhatsApp"
+                href="https://wa.me/{{ listing.phone|cut:' '|cut:'-'|cut:'('|cut:')'|cut:'+' }}"
+                target="_blank" rel="noopener"
+                onclick="logContactSilent({{ listing.id }}, 'whatsapp')"
+                style="background:#e8f5e9;color:#1b5e20;text-decoration:none;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+              </a>
+              <!-- Call -->
+              <a class="icon-btn icon-call" title="Call"
+                href="tel:{{ listing.phone }}"
+                onclick="logContactSilent({{ listing.id }}, 'call')"
+                style="background:#f3e5f5;color:#6a1b9a;text-decoration:none;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+              </a>
+              {% endif %}
+              <!-- Telegram -->
+              {% if listing.phone %}
+              <a class="icon-btn icon-tg" title="Open Telegram"
+                href="https://t.me/+{{ listing.phone|cut:' '|cut:'-'|cut:'('|cut:')'|cut:'+' }}"
+                target="_blank" rel="noopener"
+                onclick="logContactSilent({{ listing.id }}, 'telegram')"
+                style="background:#e3f2fd;color:#0277bd;text-decoration:none;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
+              </a>
+              {% endif %}
+            </div>
+          </td>
           <td class="no-row-click">
-            <form method="post" action="{% url 'delete_lead' listing.id %}" onsubmit="return confirm('Delete this lead permanently?')">
-              {% csrf_token %}
-              <button type="submit" class="btn btn-ghost btn-sm text-danger" title="Delete lead">🗑</button>
-            </form>
+            <div style="display:flex;gap:4px;align-items:center;">
+              <button class="btn btn-ghost btn-sm" title="View contact history"
+                onclick="showContactHistory({{ listing.id }}, '{{ listing.name|escapejs }}')"
+                style="font-size:11px;padding:3px 7px;">📋</button>
+              <form method="post" action="{% url 'delete_lead' listing.id %}" onsubmit="return confirm('Delete this lead permanently?')">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-ghost btn-sm text-danger" title="Delete lead" style="font-size:11px;padding:3px 7px;">🗑</button>
+              </form>
+            </div>
           </td>
         </tr>
         {% endfor %}
@@ -133,11 +278,160 @@
       {% if filters.q or filters.source or filters.has_email %}
         Try adjusting your filters.
       {% else %}
-        Run a scraping job to collect leads.
+        Run a scraping job to collect leads, or <a href="{% url 'upload_leads' %}">upload a CSV/Excel file</a>.
       {% endif %}
     </div>
   </div>
 </div>
 {% endif %}
 
+<!-- Contact History Modal -->
+<div id="contact-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:14px;width:520px;max-width:95vw;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+    <div style="padding:20px 24px;border-bottom:1px solid #eee;display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <div style="font-weight:700;font-size:16px;" id="modal-lead-name">Contact History</div>
+        <div style="font-size:12px;color:#888;" id="modal-lead-sub">All outreach attempts</div>
+      </div>
+      <button onclick="closeContactModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888;">✕</button>
+    </div>
+    <div style="padding:20px 24px;" id="modal-body">
+      <div style="text-align:center;color:#888;padding:20px;">Loading…</div>
+    </div>
+    <!-- Quick log new contact -->
+    <div style="padding:16px 24px;border-top:1px solid #eee;background:#f8f9fa;border-radius:0 0 14px 14px;">
+      <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:8px;">Log new contact attempt</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button onclick="logContactFromModal('email')" class="btn btn-sm" style="background:#e3f2fd;color:#1565c0;border:none;">✉ Email</button>
+        <button onclick="logContactFromModal('gmail')" class="btn btn-sm" style="background:#fce4ec;color:#c62828;border:none;">📧 Gmail</button>
+        <button onclick="logContactFromModal('whatsapp')" class="btn btn-sm" style="background:#e8f5e9;color:#1b5e20;border:none;">💬 WhatsApp</button>
+        <button onclick="logContactFromModal('telegram')" class="btn btn-sm" style="background:#e3f2fd;color:#0277bd;border:none;">✈ Telegram</button>
+        <button onclick="logContactFromModal('call')" class="btn btn-sm" style="background:#f3e5f5;color:#6a1b9a;border:none;">📞 Call</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+.icon-btn {
+  display:inline-flex;align-items:center;justify-content:center;
+  width:24px;height:24px;border-radius:6px;border:none;cursor:pointer;
+  transition:transform 0.15s,opacity 0.15s;text-decoration:none;
+  flex-shrink:0;
+}
+.icon-btn:hover { transform:scale(1.15);opacity:0.85; }
+</style>
+<script>
+const CSRF = getCookie('csrftoken');
+let _currentListingId = null;
+
+// ── Selection ───────────────────────────────────────────────────────────────
+function updateSelection() {
+  const chks = [...document.querySelectorAll('.lead-chk:checked')];
+  const ids = chks.map(c => c.value).join(',');
+  document.getElementById('selected-ids-input').value = ids;
+  const bar = document.getElementById('selection-bar');
+  const count = chks.length;
+  document.getElementById('sel-count').textContent = `${count} selected`;
+  bar.style.display = count > 0 ? 'flex' : 'none';
+  const allChk = document.getElementById('select-all-chk');
+  const allChks = document.querySelectorAll('.lead-chk');
+  allChk.indeterminate = count > 0 && count < allChks.length;
+  allChk.checked = count > 0 && count === allChks.length;
+}
+
+function toggleSelectAll(chk) {
+  document.querySelectorAll('.lead-chk').forEach(c => c.checked = chk.checked);
+  updateSelection();
+}
+
+function clearSelection() {
+  document.querySelectorAll('.lead-chk').forEach(c => c.checked = false);
+  document.getElementById('select-all-chk').checked = false;
+  updateSelection();
+}
+
+// ── Contact logging ─────────────────────────────────────────────────────────
+function logContact(listingId, channel, email) {
+  fetch(`/leads/${listingId}/contact/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+    body: `channel=${channel}`
+  }).then(r => r.json()).then(data => {
+    if (data.ok) showToast(`✅ ${channel} contact logged`);
+    // Refresh the contacted cell
+    setTimeout(() => location.reload(), 800);
+  });
+}
+
+function logContactSilent(listingId, channel) {
+  fetch(`/leads/${listingId}/contact/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+    body: `channel=${channel}`
+  }).catch(() => {});
+}
+
+// ── Contact history modal ───────────────────────────────────────────────────
+function showContactHistory(listingId, name) {
+  _currentListingId = listingId;
+  document.getElementById('modal-lead-name').textContent = name;
+  document.getElementById('contact-modal').style.display = 'flex';
+  document.getElementById('modal-body').innerHTML = '<div style="text-align:center;color:#888;padding:30px;">Loading…</div>';
+
+  fetch(`/api/lead/${listingId}/contacts/`)
+    .then(r => r.json())
+    .then(data => {
+      if (!data.contacts.length) {
+        document.getElementById('modal-body').innerHTML = '<div style="text-align:center;color:#bbb;padding:30px;">No contact attempts yet</div>';
+        return;
+      }
+      let html = `<div style="font-size:12px;color:#888;margin-bottom:12px;">${data.total} attempt${data.total !== 1 ? 's' : ''} total</div>`;
+      html += '<div style="display:flex;flex-direction:column;gap:8px;">';
+      const icons = { email:'✉', gmail:'📧', whatsapp:'💬', telegram:'✈', call:'📞' };
+      const colors = { email:'#1565c0', gmail:'#c62828', whatsapp:'#1b5e20', telegram:'#0277bd', call:'#6a1b9a' };
+      data.contacts.forEach(c => {
+        html += `<div style="display:flex;align-items:flex-start;gap:10px;padding:10px;background:#f8f9fa;border-radius:8px;border-left:3px solid ${colors[c.channel]||'#ccc'};">
+          <span style="font-size:16px;">${icons[c.channel]||'📌'}</span>
+          <div>
+            <div style="font-weight:600;font-size:13px;color:${colors[c.channel]||'#333'};">${c.channel.charAt(0).toUpperCase()+c.channel.slice(1)}</div>
+            <div style="font-size:11px;color:#888;">${c.contacted_at}</div>
+            ${c.notes ? `<div style="font-size:12px;color:#555;margin-top:4px;">${c.notes}</div>` : ''}
+          </div>
+        </div>`;
+      });
+      html += '</div>';
+      document.getElementById('modal-body').innerHTML = html;
+    });
+}
+
+function closeContactModal() {
+  document.getElementById('contact-modal').style.display = 'none';
+  _currentListingId = null;
+}
+
+function logContactFromModal(channel) {
+  if (!_currentListingId) return;
+  logContact(_currentListingId, channel, '');
+  closeContactModal();
+}
+
+// Close modal on backdrop click
+document.getElementById('contact-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeContactModal();
+});
+
+// ── Toast ───────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.textContent = msg;
+  t.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#333;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;z-index:10000;opacity:0;transition:opacity 0.2s;';
+  document.body.appendChild(t);
+  setTimeout(() => t.style.opacity = '1', 10);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2500);
+}
+</script>
 {% endblock %}

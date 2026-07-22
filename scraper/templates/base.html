@@ -92,11 +92,18 @@
 
     <div class="nav-section-label" style="margin-top:8px">Tools</div>
 
+    <a href="{% url 'upload_leads' %}" class="nav-item {% if active_page == 'upload' %}active{% endif %}">
+      <span class="nav-icon">
+        <svg viewBox="0 0 20 20" fill="currentColor" width="18" height="18"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg>
+      </span>
+      Import Leads
+    </a>
+
     <a href="{% url 'download_csv' %}" class="nav-item">
       <span class="nav-icon">
         <svg viewBox="0 0 20 20" fill="currentColor" width="18" height="18"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
       </span>
-      Export All Leads
+      Export Leads
     </a>
 
     <a href="/admin/" class="nav-item">
@@ -107,8 +114,23 @@
     </a>
   </nav>
 
+  <!-- Follow-up notifications -->
+  {% if notifications %}
+  <div style="padding:10px 12px;border-top:1px solid rgba(255,255,255,0.08);">
+    {% for notif in notifications %}
+    <a href="{{ notif.url }}" style="display:block;margin-bottom:6px;text-decoration:none;">
+      <div style="background:{% if notif.type == 'warning' %}rgba(255,193,7,0.18){% else %}rgba(33,150,243,0.15){% endif %};border-left:3px solid {% if notif.type == 'warning' %}#ffc107{% else %}#42a5f5{% endif %};border-radius:6px;padding:8px 10px;">
+        <div style="font-size:11px;color:{% if notif.type == 'warning' %}#ffe082{% else %}#90caf9{% endif %};font-weight:600;line-height:1.4;">
+          {{ notif.icon }} {{ notif.message }}
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   <div class="sidebar-footer">
-    <div class="version">LeadManager4U v2.1</div>
+    <div class="version">LeadManager4U v2.2</div>
   </div>
 </aside>
 

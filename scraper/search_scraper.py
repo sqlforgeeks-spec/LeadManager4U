@@ -85,16 +85,15 @@ def _get_session(country=""):
     if not getattr(_SESSION_LOCAL, "session", None):
         s = requests.Session()
         lang = COUNTRY_CONFIG.get(country, {}).get("lang", "en-US,en;q=0.9")
+        # Do NOT request brotli (br) — requests does not decompress it natively,
+        # which returns binary garbage. Only request gzip/deflate which requests handles.
         s.headers.update({
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": lang,
-            "Accept-Encoding": "gzip, deflate, br",
+            "Accept-Encoding": "gzip, deflate",
             "Connection": "keep-alive",
             "DNT": "1",
             "Upgrade-Insecure-Requests": "1",
-            "Sec-Fetch-Dest": "document",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "none",
         })
         _SESSION_LOCAL.session = s
     return _SESSION_LOCAL.session
@@ -281,7 +280,29 @@ def _parse_google_results(html, max_results):
     soup = BeautifulSoup(html, "lxml")
     results = []
     seen = set()
-    for div in soup.select("div.g, div[data-sokoban-container], div.tF2Cxc, div.Gx5Zad"):
+    # Try many Google SERP selectors — they change frequently
+    selectors = [
+        "div.g", "div[data-sokoban-container]", "div.tF2Cxc", "div.Gx5Zad",
+        "div[data-hveid]", "div.MjjYud > div", "div.hlcw0c",
+    ]
+    containers = []
+    for sel in selectors:
+        found = soup.select(sel)
+        if found:
+            containers.extend(found)
+    if not containers:
+        # Fallback: find all anchor tags with hrefs that look like external URLs
+        for a in soup.find_all("a", href=True):
+            url = _clean_url(a.get("href", ""))
+            if url and not _is_skip_domain(url) and url not in seen:
+                seen.add(url)
+                title = a.get_text(strip=True) or _domain_of(url)
+                results.append({"name": title[:200], "website": url, "snippet": ""})
+                if len(results) >= max_results:
+                    break
+        return results
+
+    for div in containers:
         if len(results) >= max_results:
             break
         a = div.select_one("a[href]")
@@ -293,7 +314,9 @@ def _parse_google_results(html, max_results):
         seen.add(url)
         title_el = div.select_one("h3")
         title = title_el.get_text(strip=True) if title_el else _domain_of(url)
-        snippet_el = div.select_one("div[data-sncf], span.st, div.VwiC3b, div.lEBKkf")
+        snippet_el = div.select_one(
+            "div[data-sncf], span.st, div.VwiC3b, div.lEBKkf, div[style*='line-clamp'], div.s"
+        )
         snippet = snippet_el.get_text(" ", strip=True) if snippet_el else ""
         results.append({"name": title, "website": url, "snippet": snippet})
     return results
@@ -336,7 +359,9 @@ def _parse_bing_results(html, max_results):
         a = li.select_one("h2 a")
         if not a:
             continue
-        url = _clean_url(a.get("href", ""))
+        raw = a.get("href", "")
+        # Bing wraps result URLs in a /ck/a redirect; decode the real URL
+        url = _extract_bing_url(raw) or _clean_url(raw)
         if not url or _is_skip_domain(url) or url in seen:
             continue
         seen.add(url)
@@ -374,24 +399,68 @@ def _parse_yahoo_results(html, max_results):
     return results
 
 
+def _extract_ddg_url(href):
+    """DDG HTML links are //duckduckgo.com/l/?uddg=<url-encoded-real-url> — decode them."""
+    if not href:
+        return ""
+    # Protocol-relative DDG redirect
+    if href.startswith("//duckduckgo.com/l/") or href.startswith("https://duckduckgo.com/l/"):
+        try:
+            from urllib.parse import urlparse, parse_qs, unquote
+            qs = parse_qs(urlparse(href if href.startswith("http") else "https:" + href).query)
+            real = qs.get("uddg", [""])[0]
+            return unquote(real) if real else ""
+        except Exception:
+            return ""
+    return href if href.startswith("http") else ""
+
+
+def _extract_bing_url(href):
+    """Bing SERP links are bing.com/ck/a?...&u=a1<base64-url>&... — decode the u param."""
+    if not href:
+        return ""
+    if "bing.com/ck/a" in href or "bing.com/aclk" in href:
+        try:
+            from urllib.parse import urlparse, parse_qs
+            import base64
+            qs = parse_qs(urlparse(href).query)
+            u = qs.get("u", [""])[0]
+            if u.startswith("a1"):  # Bing base64 prefix
+                raw = u[2:]
+                # Pad and decode
+                pad = 4 - len(raw) % 4
+                if pad < 4:
+                    raw += "=" * pad
+                real = base64.urlsafe_b64decode(raw).decode("utf-8", errors="ignore")
+                if real.startswith("http"):
+                    return real
+        except Exception:
+            pass
+        return ""
+    return href if href.startswith("http") else ""
+
+
 def _parse_ddg_results(html, max_results):
+    """Parse DuckDuckGo HTML lite results — links are protocol-relative DDG redirects."""
     soup = BeautifulSoup(html, "lxml")
     results = []
     seen = set()
-    for div in soup.select("div.result, div.result__body, article[data-testid]"):
+
+    for div in soup.select("div.result.results_links, div.result.web-result"):
         if len(results) >= max_results:
             break
-        a = div.select_one("a.result__a, h2 a, a[data-testid='result-title-a']")
+        a = div.select_one("a.result__a, h2 a, .result__title a")
         if not a:
             continue
-        url = _clean_url(a.get("href", ""))
+        url = _extract_ddg_url(a.get("href", "")) or _clean_url(a.get("href", ""))
         if not url or _is_skip_domain(url) or url in seen:
             continue
         seen.add(url)
-        title = a.get_text(strip=True)
-        snippet_el = div.select_one("a.result__snippet, .result__snippet, span[data-testid='result-snippet']")
+        title = a.get_text(strip=True) or _domain_of(url)
+        snippet_el = div.select_one("a.result__snippet, .result__snippet, .result__body")
         snippet = snippet_el.get_text(" ", strip=True) if snippet_el else ""
         results.append({"name": title, "website": url, "snippet": snippet})
+
     return results
 
 

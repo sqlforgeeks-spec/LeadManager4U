@@ -110,6 +110,14 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
                 skipped += 1
                 continue
 
+            # Skip leads marked converted or stopped — they opted out or closed
+            if listing.lead_status in ("converted", "stopped"):
+                send.status = "skipped"
+                send.error = f"Lead status: {listing.lead_status} — skipped automatically"
+                send.save(update_fields=["status", "error"])
+                skipped += 1
+                continue
+
             try:
                 body = _render_body(campaign.body, listing)
                 subject = _render_body(campaign.subject, listing)

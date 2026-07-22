@@ -1084,3 +1084,61 @@ body {
 /* ── Fix: no unwanted horizontal scroll on main area ────────────────────── */
 .main { overflow-x: hidden; }
 html, body { overflow-x: hidden; }
+
+/* ── Star button ─────────────────────────────────────────────────────────── */
+.star-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: #d1d5db;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color 0.15s, transform 0.15s;
+}
+.star-btn:hover { color: #f59e0b; transform: scale(1.2); }
+.star-btn.starred { color: #f59e0b; }
+
+/* ── Lead status badges ──────────────────────────────────────────────────── */
+.status-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+.status-fresh       { background: #f1f5f9; color: #64748b; }
+.status-following_up { background: #eff6ff; color: #2563eb; }
+.status-converted   { background: #ecfdf5; color: #059669; }
+.status-stopped     { background: #fef2f2; color: #dc2626; }
+
+/* ── Follow-up modal ─────────────────────────────────────────────────────── */
+.fu-status-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.fu-status-btn:hover { border-color: #2563eb; color: #2563eb; background: #eff6ff; }
+.fu-status-btn.fu-active { border-color: #2563eb; color: #2563eb; background: #eff6ff; box-shadow: 0 0 0 2px #bfdbfe; }
+
+/* ── Clickable stat cards ────────────────────────────────────────────────── */
+.stat-card-link {
+  cursor: pointer;
+  transition: box-shadow 0.15s, transform 0.12s;
+}
+.stat-card-link:hover { box-shadow: 0 4px 16px rgba(37,99,235,0.15); transform: translateY(-2px); }
+
+/* ── Active yellow chip (for starred filter) ─────────────────────────────── */
+.filter-chip.active-yellow {
+  background: #fffbeb;
+  color: #d97706;
+  border-color: #f59e0b;
+  font-weight: 600;
+}

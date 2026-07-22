@@ -111,6 +111,13 @@ class JobLog(models.Model):
 
 
 class BusinessListing(models.Model):
+    LEAD_STATUS_CHOICES = [
+        ("fresh", "Fresh"),
+        ("following_up", "Following Up"),
+        ("converted", "Converted"),
+        ("stopped", "Stopped"),
+    ]
+
     job = models.ForeignKey(ScrapeJob, on_delete=models.SET_NULL, null=True, blank=True, related_name="listings")
     name = models.CharField(max_length=255)
     phone = models.CharField(max_length=50, blank=True)
@@ -124,8 +131,20 @@ class BusinessListing(models.Model):
     notes = models.TextField(blank=True, help_text="Internal notes about this lead")
     scraped_at = models.DateTimeField(auto_now_add=True)
 
+    # Lead lifecycle
+    lead_status = models.CharField(
+        max_length=20, choices=LEAD_STATUS_CHOICES, default="fresh",
+        help_text="Current pipeline status for this lead"
+    )
+    is_starred = models.BooleanField(default=False, help_text="Starred/priority lead — shown above others")
+    follow_up_date = models.DateField(
+        null=True, blank=True,
+        help_text="Next follow-up date; shown in notifications when due"
+    )
+    follow_up_note = models.TextField(blank=True, help_text="Internal note about this lead's status")
+
     class Meta:
-        ordering = ['-scraped_at']
+        ordering = ['-is_starred', '-scraped_at']
 
     def __str__(self):
         return self.name

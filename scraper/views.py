@@ -109,14 +109,30 @@ def _redirect_back(request, fallback_url):
 
 
 def _global_stats():
+    from datetime import date
+    today = date.today()
+    total = BusinessListing.objects.count()
     return {
         "total_jobs": ScrapeJob.objects.count(),
-        "total_leads": BusinessListing.objects.count(),
+        "total_leads": total,
         "leads_with_email": BusinessListing.objects.exclude(email="").count(),
         "leads_with_phone": BusinessListing.objects.exclude(phone="").count(),
+        "leads_with_website": BusinessListing.objects.exclude(website="").count(),
         "active_jobs": ScrapeJob.objects.filter(status__in=["queued", "running"]).count(),
         "campaigns": EmailCampaign.objects.count(),
         "smtp_profiles": SmtpProfile.objects.count(),
+        # Pipeline / lifecycle
+        "leads_converted": BusinessListing.objects.filter(lead_status="converted").count(),
+        "leads_stopped": BusinessListing.objects.filter(lead_status="stopped").count(),
+        "leads_following_up": BusinessListing.objects.filter(lead_status="following_up").count(),
+        "leads_starred": BusinessListing.objects.filter(is_starred=True).count(),
+        "follow_up_today": BusinessListing.objects.filter(
+            lead_status="following_up", follow_up_date__lte=today
+        ).count(),
+        # Gap counts
+        "no_email": BusinessListing.objects.filter(email="").count(),
+        "no_phone": BusinessListing.objects.filter(phone="").count(),
+        "no_website": BusinessListing.objects.filter(website="").count(),
     }
 
 
@@ -135,25 +151,52 @@ def _ai_tips(stats):
 def _get_notifications():
     """Return follow-up reminders for the sidebar."""
     from django.utils import timezone
-    from datetime import timedelta
+    from datetime import timedelta, date
     now = timezone.now()
+    today = date.today()
     one_day_ago = now - timedelta(days=1)
     seven_days_ago = now - timedelta(days=7)
     notifs = []
 
-    # Leads contacted exactly 1 day ago — suggest same-day follow-up
+    # Overdue follow-ups based on follow_up_date field
+    overdue = BusinessListing.objects.filter(
+        lead_status="following_up",
+        follow_up_date__lt=today,
+    ).count()
+    if overdue:
+        notifs.append({
+            "type": "danger",
+            "icon": "⚠️",
+            "message": f"{overdue} overdue follow-up{'s' if overdue > 1 else ''} — action needed!",
+            "url": "/leads/?lead_status=following_up",
+        })
+
+    # Follow-ups due today
+    due_today = BusinessListing.objects.filter(
+        lead_status="following_up",
+        follow_up_date=today,
+    ).count()
+    if due_today:
+        notifs.append({
+            "type": "warning",
+            "icon": "🔔",
+            "message": f"{due_today} follow-up{'s' if due_today > 1 else ''} due today!",
+            "url": "/leads/?lead_status=following_up",
+        })
+
+    # Leads contacted exactly 1 day ago — suggest follow-up
     contacted_yesterday = ContactAttempt.objects.filter(
         contacted_at__date=one_day_ago.date()
     ).values("listing_id").distinct().count()
     if contacted_yesterday:
         notifs.append({
             "type": "warning",
-            "icon": "🔔",
-            "message": f"{contacted_yesterday} lead{'s' if contacted_yesterday > 1 else ''} contacted yesterday — follow up today!",
+            "icon": "📬",
+            "message": f"{contacted_yesterday} lead{'s' if contacted_yesterday > 1 else ''} contacted yesterday — schedule follow-up!",
             "url": "/leads/?contacted=1d",
         })
 
-    # Leads contacted 7 days ago — weekly follow-up
+    # Leads contacted 7 days ago — weekly re-engage
     contacted_week = ContactAttempt.objects.filter(
         contacted_at__date=seven_days_ago.date()
     ).values("listing_id").distinct().count()
@@ -851,6 +894,8 @@ def _build_leads_qs(request_get):
     job_id = request_get.get("job_id", "")
     location_filter = request_get.get("location", "").strip()
     contacted_filter = request_get.get("contacted", "")
+    lead_status_filter = request_get.get("lead_status", "")
+    starred_filter = request_get.get("starred", "")
 
     if source_filter:
         qs = qs.filter(source=source_filter)
@@ -903,6 +948,14 @@ def _build_leads_qs(request_get):
         contacted_ids = ContactAttempt.objects.values_list("listing_id", flat=True).distinct()
         qs = qs.filter(id__in=contacted_ids)
 
+    # Lead status filter
+    if lead_status_filter in ("fresh", "following_up", "converted", "stopped"):
+        qs = qs.filter(lead_status=lead_status_filter)
+
+    # Starred filter
+    if starred_filter == "1":
+        qs = qs.filter(is_starred=True)
+
     filters = {
         "source": source_filter,
         "has_email": has_email,
@@ -912,6 +965,8 @@ def _build_leads_qs(request_get):
         "job_id": job_id,
         "location": location_filter,
         "contacted": contacted_filter,
+        "lead_status": lead_status_filter,
+        "starred": starred_filter,
     }
     return qs, filters
 
@@ -919,7 +974,8 @@ def _build_leads_qs(request_get):
 def leads(request):
     qs, filters = _build_leads_qs(request.GET)
 
-    listings = list(qs.order_by("-scraped_at")[:2000].prefetch_related("contact_attempts"))
+    # Starred leads always float to the top
+    listings = list(qs.order_by("-is_starred", "-scraped_at")[:2000].prefetch_related("contact_attempts"))
 
     # Attach last contact info (no underscore prefix — Django templates reject those)
     for listing in listings:
@@ -928,11 +984,20 @@ def leads(request):
         listing.last_contact_info = attempts[0] if attempts else None
         listing.contact_total = len(attempts)
 
+    from datetime import date
+    today = date.today()
     stats = {
         "total": BusinessListing.objects.count(),
         "with_phone": BusinessListing.objects.exclude(phone="").count(),
         "with_email": BusinessListing.objects.exclude(email="").count(),
         "with_website": BusinessListing.objects.exclude(website="").count(),
+        "converted": BusinessListing.objects.filter(lead_status="converted").count(),
+        "stopped": BusinessListing.objects.filter(lead_status="stopped").count(),
+        "following_up": BusinessListing.objects.filter(lead_status="following_up").count(),
+        "starred": BusinessListing.objects.filter(is_starred=True).count(),
+        "follow_up_today": BusinessListing.objects.filter(
+            lead_status="following_up", follow_up_date__lte=today
+        ).count(),
     }
     jobs_for_filter = ScrapeJob.objects.order_by("-created_at")[:50]
     return render(request, "leads.html", {
@@ -978,6 +1043,54 @@ def api_lead_contacts(request, listing_id):
 
 def api_notifications(request):
     return JsonResponse({"notifications": _get_notifications()})
+
+
+@require_POST
+def api_update_lead(request, listing_id):
+    """AJAX: update lead_status, is_starred, follow_up_date, follow_up_note."""
+    import json
+    from datetime import date as date_cls
+    listing = get_object_or_404(BusinessListing, id=listing_id)
+    try:
+        data = json.loads(request.body)
+    except (ValueError, TypeError):
+        return JsonResponse({"ok": False, "error": "Invalid JSON"}, status=400)
+
+    valid_statuses = {c[0] for c in BusinessListing.LEAD_STATUS_CHOICES}
+
+    if "lead_status" in data:
+        new_status = data["lead_status"]
+        if new_status in valid_statuses:
+            listing.lead_status = new_status
+            # Auto-schedule next follow-up on first transition to following_up
+            if new_status == "following_up" and not listing.follow_up_date:
+                from datetime import timedelta
+                listing.follow_up_date = date_cls.today() + timedelta(days=1)
+
+    if "is_starred" in data:
+        listing.is_starred = bool(data["is_starred"])
+
+    if "follow_up_date" in data:
+        val = data["follow_up_date"]
+        if val:
+            try:
+                listing.follow_up_date = date_cls.fromisoformat(str(val))
+            except ValueError:
+                pass
+        else:
+            listing.follow_up_date = None
+
+    if "follow_up_note" in data:
+        listing.follow_up_note = str(data.get("follow_up_note", ""))[:1000]
+
+    listing.save()
+    return JsonResponse({
+        "ok": True,
+        "lead_status": listing.lead_status,
+        "is_starred": listing.is_starred,
+        "follow_up_date": listing.follow_up_date.isoformat() if listing.follow_up_date else None,
+        "follow_up_note": listing.follow_up_note,
+    })
 
 
 # ─── Upload leads ─────────────────────────────────────────────────────────────

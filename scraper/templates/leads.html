@@ -11,23 +11,35 @@
 {% block content %}
 
 <!-- Stats -->
-<div class="stats-grid mb-24">
-  <div class="stat-card">
-    <div class="stat-icon blue">👤</div>
-    <div class="stat-body"><div class="stat-value">{{ stats.total }}</div><div class="stat-label">Total Leads</div></div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-icon purple">✉️</div>
-    <div class="stat-body"><div class="stat-value">{{ stats.with_email }}</div><div class="stat-label">With Email</div></div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-icon orange">📞</div>
-    <div class="stat-body"><div class="stat-value">{{ stats.with_phone }}</div><div class="stat-label">With Phone</div></div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-icon green">🌐</div>
-    <div class="stat-body"><div class="stat-value">{{ stats.with_website }}</div><div class="stat-label">With Website</div></div>
-  </div>
+<div class="stats-grid mb-0">
+  <div class="stat-card"><div class="stat-icon blue">👤</div><div class="stat-body"><div class="stat-value">{{ stats.total }}</div><div class="stat-label">Total Leads</div></div></div>
+  <div class="stat-card"><div class="stat-icon purple">✉️</div><div class="stat-body"><div class="stat-value">{{ stats.with_email }}</div><div class="stat-label">With Email</div></div></div>
+  <div class="stat-card"><div class="stat-icon orange">📞</div><div class="stat-body"><div class="stat-value">{{ stats.with_phone }}</div><div class="stat-label">With Phone</div></div></div>
+  <div class="stat-card"><div class="stat-icon green">🌐</div><div class="stat-body"><div class="stat-value">{{ stats.with_website }}</div><div class="stat-label">With Website</div></div></div>
+</div>
+<div class="stats-grid mb-24" style="grid-template-columns:repeat(auto-fill,minmax(145px,1fr));margin-top:8px;">
+  <a href="{% url 'leads' %}?starred=1" class="stat-card stat-card-link" style="text-decoration:none;">
+    <div class="stat-icon" style="background:#fffbeb;font-size:18px;">⭐</div>
+    <div class="stat-body"><div class="stat-value" style="color:#d97706;">{{ stats.starred }}</div><div class="stat-label">Starred</div></div>
+  </a>
+  <a href="{% url 'leads' %}?lead_status=following_up" class="stat-card stat-card-link" style="text-decoration:none;">
+    <div class="stat-icon" style="background:#eff6ff;font-size:18px;">🔄</div>
+    <div class="stat-body"><div class="stat-value" style="color:#2563eb;">{{ stats.following_up }}</div><div class="stat-label">Following Up</div></div>
+  </a>
+  {% if stats.follow_up_today %}
+  <a href="{% url 'leads' %}?lead_status=following_up" class="stat-card stat-card-link" style="text-decoration:none;border:2px solid #f59e0b;">
+    <div class="stat-icon" style="background:#fffbeb;font-size:18px;">📅</div>
+    <div class="stat-body"><div class="stat-value" style="color:#d97706;">{{ stats.follow_up_today }}</div><div class="stat-label">Due Today</div></div>
+  </a>
+  {% endif %}
+  <a href="{% url 'leads' %}?lead_status=converted" class="stat-card stat-card-link" style="text-decoration:none;">
+    <div class="stat-icon" style="background:#ecfdf5;font-size:18px;">✅</div>
+    <div class="stat-body"><div class="stat-value" style="color:#059669;">{{ stats.converted }}</div><div class="stat-label">Converted</div></div>
+  </a>
+  <a href="{% url 'leads' %}?lead_status=stopped" class="stat-card stat-card-link" style="text-decoration:none;">
+    <div class="stat-icon" style="background:#fef2f2;font-size:18px;">🚫</div>
+    <div class="stat-body"><div class="stat-value" style="color:#dc2626;">{{ stats.stopped }}</div><div class="stat-label">Stopped</div></div>
+  </a>
 </div>
 
 <!-- Filters -->
@@ -40,7 +52,7 @@
         <input type="text" name="q" class="filter-search-input" placeholder="Search name, email, phone, website, address…" value="{{ filters.q }}">
       </div>
       <button type="submit" class="btn btn-primary btn-sm">Search</button>
-      {% if filters.q or filters.source or filters.has_email or filters.has_phone or filters.has_website or filters.job_id or filters.location or filters.contacted %}
+      {% if filters.q or filters.source or filters.has_email or filters.has_phone or filters.has_website or filters.job_id or filters.location or filters.contacted or filters.lead_status or filters.starred %}
         <a href="{% url 'leads' %}" class="btn btn-ghost btn-sm" style="color:#ef4444;">✕ Clear All</a>
       {% endif %}
     </div>
@@ -81,6 +93,23 @@
       <label class="filter-chip {% if filters.contacted == '7d' %}active-orange{% endif %}">
         <input type="radio" name="contacted" value="7d" {% if filters.contacted == '7d' %}checked{% endif %} onchange="this.form.submit()" style="display:none">
         📅 Re-engage (7d)
+      </label>
+      <div style="width:1px;background:#e2e8f0;margin:0 4px;"></div>
+      <label class="filter-chip {% if filters.starred == '1' %}active-yellow{% endif %}">
+        <input type="radio" name="starred" value="1" {% if filters.starred == '1' %}checked{% endif %} onchange="this.form.submit()" style="display:none">
+        ⭐ Starred
+      </label>
+      <label class="filter-chip {% if filters.lead_status == 'following_up' %}active-blue{% endif %}">
+        <input type="radio" name="lead_status" value="following_up" {% if filters.lead_status == 'following_up' %}checked{% endif %} onchange="this.form.submit()" style="display:none">
+        🔄 Following Up
+      </label>
+      <label class="filter-chip {% if filters.lead_status == 'converted' %}active-green{% endif %}">
+        <input type="radio" name="lead_status" value="converted" {% if filters.lead_status == 'converted' %}checked{% endif %} onchange="this.form.submit()" style="display:none">
+        ✅ Converted
+      </label>
+      <label class="filter-chip {% if filters.lead_status == 'stopped' %}active-orange{% endif %}">
+        <input type="radio" name="lead_status" value="stopped" {% if filters.lead_status == 'stopped' %}checked{% endif %} onchange="this.form.submit()" style="display:none">
+        🚫 Stopped
       </label>
     </div>
 

@@ -52,6 +52,7 @@ urlpatterns = [
     path('api/ai/templates/', views.api_ai_templates, name='api_ai_templates'),
     path('api/ai/scores/', views.api_lead_scores, name='api_lead_scores'),
     path('api/lead/<int:listing_id>/contacts/', views.api_lead_contacts, name='api_lead_contacts'),
+    path('api/lead/<int:listing_id>/update/', views.api_update_lead, name='api_update_lead'),
     path('api/notifications/', views.api_notifications, name='api_notifications'),
 
     # Job detail & controls (maps)

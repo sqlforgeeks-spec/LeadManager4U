@@ -22,7 +22,7 @@
 </div>
 {% endif %}
 
-<!-- Stats -->
+<!-- Core stats -->
 <div class="stats-grid">
   <div class="stat-card">
     <div class="stat-icon blue">🎯</div>
@@ -42,14 +42,14 @@
     <div class="stat-icon purple">✉️</div>
     <div class="stat-body">
       <div class="stat-value">{{ global_stats.leads_with_email }}</div>
-      <div class="stat-label">Leads with Email</div>
+      <div class="stat-label">With Email</div>
     </div>
   </div>
   <div class="stat-card">
     <div class="stat-icon orange">📞</div>
     <div class="stat-body">
       <div class="stat-value">{{ global_stats.leads_with_phone }}</div>
-      <div class="stat-label">Leads with Phone</div>
+      <div class="stat-label">With Phone</div>
     </div>
   </div>
   <div class="stat-card">
@@ -59,6 +59,68 @@
       <div class="stat-label">Active Jobs</div>
     </div>
   </div>
+</div>
+
+<!-- Pipeline / gap stats -->
+<div class="stats-grid mb-24" style="grid-template-columns:repeat(auto-fill,minmax(155px,1fr));">
+  <a href="/leads/?starred=1" class="stat-card stat-card-link" style="text-decoration:none;">
+    <div class="stat-icon" style="background:#fffbeb;font-size:20px;">⭐</div>
+    <div class="stat-body">
+      <div class="stat-value" style="color:#d97706;">{{ global_stats.leads_starred }}</div>
+      <div class="stat-label">Starred</div>
+    </div>
+  </a>
+  <a href="/leads/?lead_status=following_up" class="stat-card stat-card-link" style="text-decoration:none;">
+    <div class="stat-icon" style="background:#eff6ff;font-size:20px;">🔄</div>
+    <div class="stat-body">
+      <div class="stat-value" style="color:#2563eb;">{{ global_stats.leads_following_up }}</div>
+      <div class="stat-label">Following Up</div>
+    </div>
+  </a>
+  {% if global_stats.follow_up_today %}
+  <a href="/leads/?lead_status=following_up" class="stat-card stat-card-link" style="text-decoration:none;border:2px solid #f59e0b;">
+    <div class="stat-icon" style="background:#fffbeb;font-size:20px;">📅</div>
+    <div class="stat-body">
+      <div class="stat-value" style="color:#d97706;">{{ global_stats.follow_up_today }}</div>
+      <div class="stat-label">Due Today</div>
+    </div>
+  </a>
+  {% endif %}
+  <a href="/leads/?lead_status=converted" class="stat-card stat-card-link" style="text-decoration:none;">
+    <div class="stat-icon" style="background:#ecfdf5;font-size:20px;">✅</div>
+    <div class="stat-body">
+      <div class="stat-value" style="color:#059669;">{{ global_stats.leads_converted }}</div>
+      <div class="stat-label">Converted</div>
+    </div>
+  </a>
+  <a href="/leads/?lead_status=stopped" class="stat-card stat-card-link" style="text-decoration:none;">
+    <div class="stat-icon" style="background:#fef2f2;font-size:20px;">🚫</div>
+    <div class="stat-body">
+      <div class="stat-value" style="color:#dc2626;">{{ global_stats.leads_stopped }}</div>
+      <div class="stat-label">Stopped</div>
+    </div>
+  </a>
+  <a href="/leads/?has_email=0" class="stat-card stat-card-link" style="text-decoration:none;">
+    <div class="stat-icon" style="background:#f8fafc;font-size:20px;">✉️</div>
+    <div class="stat-body">
+      <div class="stat-value" style="color:#94a3b8;">{{ global_stats.no_email }}</div>
+      <div class="stat-label">No Email</div>
+    </div>
+  </a>
+  <a href="/leads/?has_phone=0" class="stat-card stat-card-link" style="text-decoration:none;">
+    <div class="stat-icon" style="background:#f8fafc;font-size:20px;">📞</div>
+    <div class="stat-body">
+      <div class="stat-value" style="color:#94a3b8;">{{ global_stats.no_phone }}</div>
+      <div class="stat-label">No Phone</div>
+    </div>
+  </a>
+  <a href="/leads/?has_website=0" class="stat-card stat-card-link" style="text-decoration:none;">
+    <div class="stat-icon" style="background:#f8fafc;font-size:20px;">🌐</div>
+    <div class="stat-body">
+      <div class="stat-value" style="color:#94a3b8;">{{ global_stats.no_website }}</div>
+      <div class="stat-label">No Website</div>
+    </div>
+  </a>
 </div>
 
 <!-- New Maps Job -->

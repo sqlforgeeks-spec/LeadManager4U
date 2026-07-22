@@ -1,0 +1,149 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Google Maps Scraper{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'scraper/styles.css' %}">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <header class="navbar">
+        <div class="navbar-inner">
+            <div class="brand"><a href="{% url 'home' %}">Scrap4U</a></div>
+            <form method="post" action="{% url 'home' %}" class="nav-form">
+                {% csrf_token %}
+                <input type="text" name="search_phrase" placeholder="Search phrase" required>
+                <input type="text" name="locations" placeholder="Locations (comma-separated)" required>
+                <input type="number" name="max_results" min="1" max="5000" value="1000" required>
+                <select name="speed">
+                    <option value="slow">Slow</option>
+                    <option value="normal" selected>Normal</option>
+                    <option value="fast">Fast</option>
+                </select>
+                <select name="domain">
+                    {% for code, name in domains %}
+                        <option value="{{ code }}" {% if code == "com" %}selected{% endif %}>{{ name }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit">Start</button>
+            </form>
+        </div>
+    </header>
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+    <script>
+        const getCookie = (name) => {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) {
+                return parts.pop().split(';').shift();
+            }
+            return "";
+        };
+
+        const normalize = (value) => (value || "").toString().toLowerCase();
+
+        const getTableBody = (table) => table?.querySelector("tbody") || table;
+        const getTableRows = (table) => {
+            if (!table) {
+                return [];
+            }
+            const body = getTableBody(table);
+            return Array.from(body.querySelectorAll("tr"));
+        };
+
+        const attachRowHandlers = (root = document) => {
+            root.querySelectorAll('tr[data-href]').forEach((row) => {
+                if (row.dataset.rowBound) {
+                    return;
+                }
+                row.dataset.rowBound = "true";
+                row.addEventListener('click', (event) => {
+                    if (event.target.closest('a, button, form, input, select, textarea, .no-row-click')) {
+                        return;
+                    }
+                    window.location = row.dataset.href;
+                });
+                row.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter') {
+                        window.location = row.dataset.href;
+                    }
+                });
+            });
+        };
+
+        window.attachRowHandlers = attachRowHandlers;
+
+        const filterTable = (table, query) => {
+            if (!table) {
+                return;
+            }
+            const rows = getTableRows(table);
+            const term = normalize(query);
+            rows.forEach((row) => {
+                const text = normalize(row.textContent);
+                row.style.display = text.includes(term) ? "" : "none";
+            });
+        };
+
+        document.querySelectorAll("[data-filter-button]").forEach((button) => {
+            button.addEventListener("click", () => {
+                const table = document.querySelector(button.dataset.filterTarget);
+                const input = document.querySelector(button.dataset.filterInput);
+                filterTable(table, input ? input.value : "");
+            });
+        });
+
+        document.querySelectorAll(".tool-input").forEach((input) => {
+            input.addEventListener("keydown", (event) => {
+                if (event.key === "Enter") {
+                    const target = document.querySelector(`[data-filter-input="#${input.id}"]`);
+                    if (target) {
+                        target.click();
+                    }
+                }
+            });
+        });
+
+        const applySort = (table, mode) => {
+            if (!table) {
+                return;
+            }
+            const rows = getTableRows(table);
+            const parseNum = (value) => Number.parseInt(value || "0", 10);
+            const sorters = {
+                id_desc: (a, b) => parseNum(b.dataset.id) - parseNum(a.dataset.id),
+                id_asc: (a, b) => parseNum(a.dataset.id) - parseNum(b.dataset.id),
+                status: (a, b) => normalize(a.dataset.status).localeCompare(normalize(b.dataset.status)),
+                collected_desc: (a, b) => parseNum(b.dataset.collected) - parseNum(a.dataset.collected),
+                processed_desc: (a, b) => parseNum(b.dataset.processed) - parseNum(a.dataset.processed),
+                query: (a, b) => normalize(a.dataset.query).localeCompare(normalize(b.dataset.query)),
+            };
+            const sorter = sorters[mode];
+            if (!sorter) {
+                return;
+            }
+            const body = getTableBody(table);
+            rows.sort(sorter).forEach((row) => body.appendChild(row));
+        };
+
+        document.querySelectorAll("[data-sort-target]").forEach((select) => {
+            select.addEventListener("change", () => {
+                const table = document.querySelector(select.dataset.sortTarget);
+                applySort(table, select.value);
+            });
+            const table = document.querySelector(select.dataset.sortTarget);
+            applySort(table, select.value);
+        });
+
+        window.getCookie = getCookie;
+        window.filterTable = filterTable;
+        window.applySort = applySort;
+        attachRowHandlers();
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

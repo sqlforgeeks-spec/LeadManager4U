@@ -1,0 +1,335 @@
+{% extends "base.html" %}
+
+{% block head %}{% endblock %}
+
+{% block content %}
+<h1>Business Lead Finder</h1>
+<div class="status">
+    Launch new scrapes from the top bar. Live results and logs show on each job page.
+</div>
+{% if home_stats %}
+    <div class="stat-row" id="home-stats">
+        <div class="stat-pill" data-stat="total">Total jobs: {{ home_stats.total }}</div>
+        <div class="stat-pill" data-stat="queued">Queued: {{ home_stats.queued }}</div>
+        <div class="stat-pill" data-stat="running">Running: {{ home_stats.running }}</div>
+        <div class="stat-pill" data-stat="paused">Paused: {{ home_stats.paused }}</div>
+        <div class="stat-pill" data-stat="completed">Completed: {{ home_stats.completed }}</div>
+    </div>
+{% endif %}
+
+{% if recent_jobs %}
+    <h2 class="section-title">
+        Recent Jobs
+        <span class="badge badge-live" id="home-live-badge" {% if not refresh_home %}style="display:none"{% endif %}>Live updating</span>
+    </h2>
+    <div class="table-tools">
+        <div class="tool-group">
+            <input type="text" id="recent-search" class="tool-input" placeholder="Search jobs">
+            <button type="button" class="tool-button" data-filter-button data-filter-target="#recent-jobs-table" data-filter-input="#recent-search">Search</button>
+        </div>
+        <div class="tool-group">
+            <label for="recent-sort" class="tool-label">Sort</label>
+            <select id="recent-sort" class="tool-select" data-sort-target="#recent-jobs-table">
+                <option value="id_desc">Newest</option>
+                <option value="id_asc">Oldest</option>
+                <option value="status">Status</option>
+                <option value="collected_desc">Collected (high)</option>
+                <option value="processed_desc">Processed (high)</option>
+                <option value="query">Query (A-Z)</option>
+            </select>
+        </div>
+        <div class="tool-group">
+            <button type="button" class="tool-button" id="recent-refresh">Refresh now</button>
+            <button type="button" class="tool-button" id="recent-live-toggle">Live updates: On</button>
+            <span class="tool-label" id="recent-updated">Updated: just now</span>
+        </div>
+    </div>
+    <div class="card">
+        <table class="table" id="recent-jobs-table">
+            <thead>
+                <tr><th>ID</th><th>Status</th><th>Query</th><th>Speed</th><th>Collected</th><th>Processed</th><th>Downloads</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="recent-jobs-body">
+                {% for job in recent_jobs %}
+                    <tr class="clickable-row" data-href="{% url 'job_detail' job.id %}" tabindex="0"
+                        data-id="{{ job.id }}"
+                        data-status="{{ job.status }}"
+                        data-collected="{{ job.collected_listings }}"
+                        data-processed="{{ job.processed_listings }}"
+                        data-query="{{ job.search_phrase|lower }}">
+                        <td>#{{ job.id }}</td>
+                        <td><span class="badge badge-{{ job.status }}">{{ job.get_status_display }}</span></td>
+                        <td>{{ job.search_phrase }}</td>
+                        <td>{{ job.get_speed_display }}</td>
+                        <td>{{ job.collected_listings }}/{{ job.max_results }}</td>
+                        <td>{{ job.processed_listings }}</td>
+                        <td class="download-cell no-row-click">
+                            <div class="download-icons">
+                                <a class="icon-button" href="{% url 'download_job_csv' job.id %}" title="Download all">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a1 1 0 0 1 1 1v8.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4.01 4.01a1 1 0 0 1-1.4 0L7.28 11.7a1 1 0 1 1 1.42-1.4l2.3 2.29V4a1 1 0 0 1 1-1zm-7 14a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z"/></svg>
+                                    <span>Download All</span>
+                                </a>
+                                <a class="icon-button" href="{% url 'download_job_phone_csv' job.id %}" title="Download phones">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm5 15a1.25 1.25 0 1 0 0-2.5A1.25 1.25 0 0 0 12 18z"/></svg>
+                                    <span>Download Phone</span>
+                                </a>
+                                <a class="icon-button" href="{% url 'download_job_email_csv' job.id %}" title="Download emails">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v.3l-8 5.1-8-5.1V6zm0 3.7 7.46 4.77a1 1 0 0 0 1.08 0L20 9.7V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9.7z"/></svg>
+                                    <span>Download Email</span>
+                                </a>
+                                <a class="icon-button" href="{% url 'download_job_website_csv' job.id %}" title="Download websites">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 1 1 0 16A8 8 0 0 1 12 4zm5.8 7H16.7a12 12 0 0 0-1-4.1A6.02 6.02 0 0 1 17.8 11zM12 6.2c.6.9 1.2 2.4 1.5 4.8H10.5c.3-2.4.9-3.9 1.5-4.8zM6.2 11A6.02 6.02 0 0 1 8.3 6.9 12 12 0 0 0 7.3 11H6.2zm1.1 2h1.1a12 12 0 0 0 1 4.1A6.02 6.02 0 0 1 6.2 13zm4.2 4.8c-.6-.9-1.2-2.4-1.5-4.8h3c-.3 2.4-.9 3.9-1.5 4.8zm4.2-1a12 12 0 0 0 1-4.1h1.1a6.02 6.02 0 0 1-2.1 4.1z"/></svg>
+                                    <span>Download Website</span>
+                                </a>
+                            </div>
+                        </td>
+                        <td class="action-cell">
+                            {% if job.status == "running" %}
+                                <form method="post" action="{% url 'pause_job' job.id %}">
+                                    {% csrf_token %}
+                                    <button type="submit" class="button-secondary">Pause</button>
+                                </form>
+                                <form method="post" action="{% url 'stop_job' job.id %}">
+                                    {% csrf_token %}
+                                    <button type="submit" class="button-secondary">Stop</button>
+                                </form>
+                        {% elif job.status == "paused" %}
+                            <button type="button" class="button-secondary resume-btn" data-resume-job="{{ job.id }}">Resume</button>
+                            <form method="post" action="{% url 'stop_job' job.id %}">
+                                {% csrf_token %}
+                                <button type="submit" class="button-secondary">Stop</button>
+                            </form>
+                        {% elif job.status == "queued" %}
+                            <form method="post" action="{% url 'stop_job' job.id %}">
+                                {% csrf_token %}
+                                <button type="submit" class="button-secondary">Stop</button>
+                            </form>
+                        {% elif job.status == "failed" %}
+                            <button type="button" class="button-secondary resume-btn" data-resume-job="{{ job.id }}">Resume</button>
+                        {% elif job.status == "completed" %}
+                            <span class="status-text">Completed</span>
+                        {% elif job.status == "completed_with_errors" %}
+                            {% if job.last_error == "Stopped by user." %}
+                                <span class="status-text">Stopped</span>
+                            {% else %}
+                                <span class="status-text">Completed with errors</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="status-text">{{ job.get_status_display }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+        </table>
+    </div>
+{% endif %}
+
+<div class="modal-backdrop" id="resume-modal">
+    <div class="modal-card">
+        <h3>Resume Job</h3>
+        <p>Choose how you want to resume this job.</p>
+        <div class="modal-actions">
+            <form method="post" id="resume-continue-form">
+                {% csrf_token %}
+                <input type="hidden" name="resume_mode" value="continue">
+                <button type="submit" class="button-secondary">Continue from last location</button>
+            </form>
+            <form method="post" id="resume-restart-form">
+                {% csrf_token %}
+                <input type="hidden" name="resume_mode" value="restart_all">
+                <button type="submit" class="button-secondary">Restart all locations</button>
+            </form>
+        </div>
+        <button type="button" class="button-link modal-close" id="resume-close">Cancel</button>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const recentApiUrl = "{% url 'api_recent_jobs' %}";
+    const recentBody = document.getElementById("recent-jobs-body");
+    const recentUpdated = document.getElementById("recent-updated");
+    const homeStats = document.getElementById("home-stats");
+    const homeLiveBadge = document.getElementById("home-live-badge");
+    const sortSelect = document.getElementById("recent-sort");
+    const searchInput = document.getElementById("recent-search");
+    const csrfToken = window.getCookie ? window.getCookie("csrftoken") : "";
+    let liveUpdates = true;
+    let recentTimer = null;
+
+    const buildActionForms = (job) => {
+        const forms = [];
+        if (job.status === "running") {
+            forms.push(`<form method="post" action="/jobs/${job.id}/pause/" class="no-row-click"><input type="hidden" name="csrfmiddlewaretoken" value="${csrfToken}"><button type="submit" class="button-secondary">Pause</button></form>`);
+            forms.push(`<form method="post" action="/jobs/${job.id}/stop/" class="no-row-click"><input type="hidden" name="csrfmiddlewaretoken" value="${csrfToken}"><button type="submit" class="button-secondary">Stop</button></form>`);
+        } else if (job.status === "paused") {
+            forms.push(`<form method="post" action="/jobs/${job.id}/resume/" class="no-row-click"><input type="hidden" name="csrfmiddlewaretoken" value="${csrfToken}"><button type="submit" class="button-secondary">Resume</button></form>`);
+            forms.push(`<form method="post" action="/jobs/${job.id}/stop/" class="no-row-click"><input type="hidden" name="csrfmiddlewaretoken" value="${csrfToken}"><button type="submit" class="button-secondary">Stop</button></form>`);
+        } else if (job.status === "queued") {
+            forms.push(`<form method="post" action="/jobs/${job.id}/stop/" class="no-row-click"><input type="hidden" name="csrfmiddlewaretoken" value="${csrfToken}"><button type="submit" class="button-secondary">Stop</button></form>`);
+        } else if (job.status === "failed") {
+            forms.push(`<form method="post" action="/jobs/${job.id}/resume/" class="no-row-click"><input type="hidden" name="csrfmiddlewaretoken" value="${csrfToken}"><button type="submit" class="button-secondary">Resume</button></form>`);
+        } else if (job.status === "completed") {
+            forms.push(`<span class="status-text">Completed</span>`);
+        } else if (job.status === "completed_with_errors") {
+            const stopped = job.last_error === "Stopped by user.";
+            forms.push(`<span class="status-text">${stopped ? "Stopped" : "Completed with errors"}</span>`);
+        } else {
+            forms.push(`<span class="status-text">${job.status_display || job.status}</span>`);
+        }
+        return forms.join("");
+    };
+
+    const buildDownloads = (job) => `
+        <div class="download-icons">
+            <a class="icon-button" href="/jobs/${job.id}/download/" title="Download all">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a1 1 0 0 1 1 1v8.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4.01 4.01a1 1 0 0 1-1.4 0L7.28 11.7a1 1 0 1 1 1.42-1.4l2.3 2.29V4a1 1 0 0 1 1-1zm-7 14a1 1 0 0 1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z"/></svg>
+                <span>Download All</span>
+            </a>
+            <a class="icon-button" href="/jobs/${job.id}/download/phone/" title="Download phones">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm5 15a1.25 1.25 0 1 0 0-2.5A1.25 1.25 0 0 0 12 18z"/></svg>
+                <span>Download Phone</span>
+            </a>
+            <a class="icon-button" href="/jobs/${job.id}/download/email/" title="Download emails">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v.3l-8 5.1-8-5.1V6zm0 3.7 7.46 4.77a1 1 0 0 0 1.08 0L20 9.7V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9.7z"/></svg>
+                <span>Download Email</span>
+            </a>
+            <a class="icon-button" href="/jobs/${job.id}/download/website/" title="Download websites">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 1 1 0 16A8 8 0 0 1 12 4zm5.8 7H16.7a12 12 0 0 0-1-4.1A6.02 6.02 0 0 1 17.8 11zM12 6.2c.6.9 1.2 2.4 1.5 4.8H10.5c.3-2.4.9-3.9 1.5-4.8zM6.2 11A6.02 6.02 0 0 1 8.3 6.9 12 12 0 0 0 7.3 11H6.2zm1.1 2h1.1a12 12 0 0 0 1 4.1A6.02 6.02 0 0 1 6.2 13zm4.2 4.8c-.6-.9-1.2-2.4-1.5-4.8h3c-.3 2.4-.9 3.9-1.5 4.8zm4.2-1a12 12 0 0 0 1-4.1h1.1a6.02 6.02 0 0 1-2.1 4.1z"/></svg>
+                <span>Download Website</span>
+            </a>
+        </div>`;
+
+    const renderRecentJobs = (payload) => {
+        if (!recentBody || !payload) {
+            return;
+        }
+        if (payload.stats && homeStats) {
+            homeStats.querySelector('[data-stat="total"]').textContent = `Total jobs: ${payload.stats.total}`;
+            homeStats.querySelector('[data-stat="queued"]').textContent = `Queued: ${payload.stats.queued}`;
+            homeStats.querySelector('[data-stat="running"]').textContent = `Running: ${payload.stats.running}`;
+            homeStats.querySelector('[data-stat="paused"]').textContent = `Paused: ${payload.stats.paused}`;
+            homeStats.querySelector('[data-stat="completed"]').textContent = `Completed: ${payload.stats.completed}`;
+        }
+        recentBody.innerHTML = payload.jobs.map((job) => `
+            <tr class="clickable-row" data-href="/jobs/${job.id}/" tabindex="0"
+                data-id="${job.id}"
+                data-status="${job.status}"
+                data-collected="${job.collected}"
+                data-processed="${job.processed}"
+                data-query="${(job.search_phrase || "").toLowerCase()}">
+                <td>#${job.id}</td>
+                <td><span class="badge badge-${job.status}">${job.status_display}</span></td>
+                <td>${job.search_phrase || ""}</td>
+                <td>${job.speed_display || ""}</td>
+                <td>${job.collected}/${job.max_results}</td>
+                <td>${job.processed}</td>
+                <td class="download-cell no-row-click">${buildDownloads(job)}</td>
+                <td class="action-cell">${buildActionForms(job)}</td>
+            </tr>
+        `).join("");
+        if (window.attachRowHandlers) {
+            window.attachRowHandlers(recentBody);
+        }
+        if (sortSelect && window.applySort) {
+            window.applySort(document.getElementById("recent-jobs-table"), sortSelect.value);
+        }
+        if (searchInput && searchInput.value && window.filterTable) {
+            window.filterTable(document.getElementById("recent-jobs-table"), searchInput.value);
+        }
+        const stamp = payload.timestamp || new Date().toLocaleTimeString();
+        if (recentUpdated) {
+            recentUpdated.textContent = `Updated: ${stamp}`;
+        }
+    };
+
+    const fetchRecentJobs = () => {
+        if (!recentApiUrl) {
+            return;
+        }
+        fetch(recentApiUrl, { headers: { "Accept": "application/json" } })
+            .then((resp) => resp.ok ? resp.json() : null)
+            .then(renderRecentJobs)
+            .catch(() => {});
+    };
+
+    const setLiveUpdates = (enabled) => {
+        liveUpdates = enabled;
+        const toggle = document.getElementById("recent-live-toggle");
+        if (toggle) {
+            toggle.textContent = `Live updates: ${enabled ? "On" : "Off"}`;
+        }
+        if (homeLiveBadge) {
+            homeLiveBadge.style.display = enabled ? "" : "none";
+        }
+        if (recentTimer) {
+            clearInterval(recentTimer);
+            recentTimer = null;
+        }
+        if (enabled) {
+            recentTimer = setInterval(fetchRecentJobs, 10000);
+        }
+    };
+
+    const refreshButton = document.getElementById("recent-refresh");
+    if (refreshButton) {
+        refreshButton.addEventListener("click", fetchRecentJobs);
+    }
+    const liveToggle = document.getElementById("recent-live-toggle");
+    if (liveToggle) {
+        liveToggle.addEventListener("click", () => setLiveUpdates(!liveUpdates));
+    }
+
+    if (recentApiUrl) {
+        setLiveUpdates(true);
+    }
+
+    const resumeModal = document.getElementById("resume-modal");
+    const resumeContinueForm = document.getElementById("resume-continue-form");
+    const resumeRestartForm = document.getElementById("resume-restart-form");
+    const resumeClose = document.getElementById("resume-close");
+    document.querySelectorAll(".resume-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const jobId = btn.dataset.resumeJob;
+            if (!jobId || !resumeModal) {
+                return;
+            }
+            if (resumeContinueForm) {
+                resumeContinueForm.action = `/jobs/${jobId}/resume/`;
+            }
+            if (resumeRestartForm) {
+                resumeRestartForm.action = `/jobs/${jobId}/resume/`;
+            }
+            resumeModal.classList.add("show");
+        });
+    });
+    if (resumeClose && resumeModal) {
+        resumeClose.addEventListener("click", () => resumeModal.classList.remove("show"));
+    }
+    if (resumeModal) {
+        resumeModal.addEventListener("click", (event) => {
+            if (event.target === resumeModal) {
+                resumeModal.classList.remove("show");
+            }
+        });
+    }
+
+    document.addEventListener("visibilitychange", () => {
+        if (!recentApiUrl) {
+            return;
+        }
+        if (document.hidden) {
+            if (recentTimer) {
+                clearInterval(recentTimer);
+                recentTimer = null;
+            }
+        } else if (liveUpdates && !recentTimer) {
+            fetchRecentJobs();
+            recentTimer = setInterval(fetchRecentJobs, 10000);
+        }
+    });
+</script>
+{% endblock %}

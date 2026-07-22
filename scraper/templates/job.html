@@ -1,0 +1,366 @@
+{% extends "base.html" %}
+
+{% block title %}Job {{ job.id }}{% endblock %}
+
+{% block head %}{% endblock %}
+
+{% block content %}
+        <div class="job-header">
+            <h1>Job #{{ job.id }}</h1>
+            <span class="badge badge-{{ job.status }}" id="job-status-badge">{{ job.get_status_display }}</span>
+        </div>
+
+        <div class="card">
+            <div class="job-meta">
+                <div><strong>Query:</strong> <span id="job-query">{{ job.search_phrase }}</span></div>
+                <div><strong>Domain:</strong> <span id="job-domain">google.{{ job.domain }}</span></div>
+                <div><strong>Speed:</strong> <span id="job-speed">{{ job.get_speed_display }}</span></div>
+                <div><strong>Locations:</strong> <span id="job-locations">{{ job.locations }}</span></div>
+                <div><strong>Target:</strong> <span id="job-target">{{ job.max_results }}</span></div>
+                <div><strong>Collected:</strong> <span id="job-collected">{{ job.collected_listings }}</span></div>
+                <div><strong>Processed:</strong> <span id="job-processed">{{ job.processed_listings }}</span></div>
+                <div><strong>Emails found:</strong> <span id="job-emails">{{ job.emails_found }}</span></div>
+                <div><strong>Locations done:</strong> <span id="job-locations-done">{{ job.processed_locations }}/{{ job.total_locations }}</span></div>
+                <div><strong>Updated:</strong> <span id="job-updated">{{ job.updated_at|date:"Y-m-d H:i:s" }}</span></div>
+                <div class="muted" id="job-error" {% if not job.last_error %}style="display:none"{% endif %}>
+                    <strong>Last error:</strong> <span id="job-error-text">{{ job.last_error }}</span>
+                </div>
+            </div>
+            <div class="progress">
+                <div class="progress-bar" id="job-progress-bar" style="width: {{ progress }}%"></div>
+            </div>
+            <div class="table-tools">
+                <div class="tool-group">
+                    <button type="button" class="tool-button" id="job-refresh">Refresh now</button>
+                    <button type="button" class="tool-button" id="job-live-toggle">Live updates: On</button>
+                    <span class="tool-label" id="job-updated-label">Updated: just now</span>
+                </div>
+            </div>
+            <div class="actions">
+                <a class="button-link" href="{% url 'download_job_csv' job.id %}">Download CSV</a>
+                <a class="button-link" href="{% url 'download_job_phone_csv' job.id %}">Download Phone</a>
+                <a class="button-link" href="{% url 'download_job_email_csv' job.id %}">Download Email</a>
+                <a class="button-link" href="{% url 'download_job_website_csv' job.id %}">Download Website</a>
+                <a href="{% url 'results' %}">All results</a>
+                <a href="{% url 'home' %}">New search</a>
+                {% if can_pause %}
+                    <form method="post" action="{% url 'pause_job' job.id %}">
+                        {% csrf_token %}
+                        <button type="submit" class="button-secondary">Pause</button>
+                    </form>
+                    <form method="post" action="{% url 'stop_job' job.id %}">
+                        {% csrf_token %}
+                        <button type="submit" class="button-secondary">Stop</button>
+                    </form>
+                {% endif %}
+                {% if can_resume %}
+                    <button type="button" class="button-secondary resume-btn" data-resume-job="{{ job.id }}">Resume</button>
+                    <form method="post" action="{% url 'stop_job' job.id %}">
+                        {% csrf_token %}
+                        <button type="submit" class="button-secondary">Stop</button>
+                    </form>
+                {% endif %}
+            </div>
+            {% if is_running %}
+                <div class="status" id="job-live-status">Live updates are active. Use Pause or Stop to control the job.</div>
+            {% elif is_paused %}
+                <div class="status" id="job-live-status">Job is paused. Click Resume to continue.</div>
+            {% else %}
+                <div class="status" id="job-live-status" style="display:none"></div>
+            {% endif %}
+        </div>
+
+        <h2 class="section-title">Logs</h2>
+        <div class="log-box" id="job-log-box">
+            {% for log in logs %}
+                <div class="log-line log-{{ log.level|lower }}">
+                    {{ log.created_at|date:"Y-m-d H:i:s" }} [{{ log.level }}] {{ log.message }}
+                </div>
+            {% empty %}
+                <div class="muted">No logs yet.</div>
+            {% endfor %}
+        </div>
+
+        <h2 class="section-title">Latest Results</h2>
+        {% if listings %}
+            <table class="table" id="job-listings-table">
+                <thead>
+                    <tr><th>Name</th><th>Phone</th><th>Email</th><th>Website</th><th>Location</th></tr>
+                </thead>
+                <tbody id="job-listings-body">
+                    {% for listing in listings %}
+                        <tr>
+                            <td>{{ listing.name }}</td>
+                            <td>{% if listing.phone %}{{ listing.phone }}{% else %}<span class="muted">No phone</span>{% endif %}</td>
+                            <td>
+                                {% if listing.email %}
+                                    <span class="truncate" title="{{ listing.email }}">{{ listing.email }}</span>
+                                {% else %}
+                                    <span class="muted">No email</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if listing.website %}
+                                    <a href="{{ listing.website }}" target="_blank" rel="noopener">Website</a>
+                                {% else %}
+                                    <span class="muted">No website</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ listing.location }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div class="status">No results yet.</div>
+        {% endif %}
+
+{% if recent_jobs %}
+            <h2 class="section-title">Other Recent Jobs</h2>
+            <div class="table-tools">
+                <div class="tool-group">
+                    <input type="text" id="job-recent-search" class="tool-input" placeholder="Search jobs">
+                    <button type="button" class="tool-button" data-filter-button data-filter-target="#job-recent-table" data-filter-input="#job-recent-search">Search</button>
+                </div>
+                <div class="tool-group">
+                    <label for="job-recent-sort" class="tool-label">Sort</label>
+                    <select id="job-recent-sort" class="tool-select" data-sort-target="#job-recent-table">
+                        <option value="id_desc">Newest</option>
+                        <option value="id_asc">Oldest</option>
+                        <option value="status">Status</option>
+                        <option value="collected_desc">Collected (high)</option>
+                        <option value="processed_desc">Processed (high)</option>
+                        <option value="query">Query (A-Z)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="card">
+                <table class="table" id="job-recent-table">
+                    <thead>
+                        <tr><th>ID</th><th>Status</th><th>Query</th><th>Collected</th><th>Processed</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for recent in recent_jobs %}
+                            <tr class="clickable-row" data-href="{% url 'job_detail' recent.id %}" tabindex="0"
+                                data-id="{{ recent.id }}"
+                                data-status="{{ recent.status }}"
+                                data-collected="{{ recent.collected_listings }}"
+                                data-processed="{{ recent.processed_listings }}"
+                                data-query="{{ recent.search_phrase|lower }}">
+                                <td>#{{ recent.id }}</td>
+                                <td><span class="badge badge-{{ recent.status }}">{{ recent.get_status_display }}</span></td>
+                                <td>{{ recent.search_phrase }}</td>
+                                <td>{{ recent.collected_listings }}/{{ recent.max_results }}</td>
+                                <td>{{ recent.processed_listings }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+{% endif %}
+
+<div class="modal-backdrop" id="resume-modal">
+    <div class="modal-card">
+        <h3>Resume Job</h3>
+        <p>Choose how you want to resume this job.</p>
+        <div class="modal-actions">
+            <form method="post" id="resume-continue-form">
+                {% csrf_token %}
+                <input type="hidden" name="resume_mode" value="continue">
+                <button type="submit" class="button-secondary">Continue from last location</button>
+            </form>
+            <form method="post" id="resume-restart-form">
+                {% csrf_token %}
+                <input type="hidden" name="resume_mode" value="restart_all">
+                <button type="submit" class="button-secondary">Restart all locations</button>
+            </form>
+        </div>
+        <button type="button" class="button-link modal-close" id="resume-close">Cancel</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const jobStatusUrl = "{% url 'api_job_status' job.id %}";
+    const jobStatusBadge = document.getElementById("job-status-badge");
+    const jobCollected = document.getElementById("job-collected");
+    const jobProcessed = document.getElementById("job-processed");
+    const jobEmails = document.getElementById("job-emails");
+    const jobLocationsDone = document.getElementById("job-locations-done");
+    const jobUpdated = document.getElementById("job-updated");
+    const jobUpdatedLabel = document.getElementById("job-updated-label");
+    const jobProgress = document.getElementById("job-progress-bar");
+    const jobError = document.getElementById("job-error");
+    const jobErrorText = document.getElementById("job-error-text");
+    const logBox = document.getElementById("job-log-box");
+    const listingsBody = document.getElementById("job-listings-body");
+    const jobLiveStatus = document.getElementById("job-live-status");
+    const resumeModal = document.getElementById("resume-modal");
+    const resumeContinueForm = document.getElementById("resume-continue-form");
+    const resumeRestartForm = document.getElementById("resume-restart-form");
+    const resumeClose = document.getElementById("resume-close");
+    let jobLiveUpdates = true;
+    let jobTimer = null;
+
+    const escapeHtml = (value) => {
+        return (value || "").toString()
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/\"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    };
+
+    const renderJob = (payload) => {
+        if (!payload || !payload.job) {
+            return;
+        }
+        const job = payload.job;
+        if (jobStatusBadge) {
+            jobStatusBadge.className = `badge badge-${job.status}`;
+            jobStatusBadge.textContent = job.status_display;
+        }
+        if (jobCollected) {
+            jobCollected.textContent = job.collected;
+        }
+        if (jobProcessed) {
+            jobProcessed.textContent = job.processed;
+        }
+        if (jobEmails) {
+            jobEmails.textContent = job.emails_found;
+        }
+        if (jobLocationsDone) {
+            jobLocationsDone.textContent = `${job.processed_locations}/${job.total_locations}`;
+        }
+        if (jobUpdated) {
+            jobUpdated.textContent = job.updated_at;
+        }
+        if (jobUpdatedLabel) {
+            jobUpdatedLabel.textContent = `Updated: ${payload.timestamp || job.updated_at}`;
+        }
+        if (jobProgress) {
+            jobProgress.style.width = `${payload.progress || 0}%`;
+        }
+        if (jobError) {
+            if (job.last_error) {
+                jobError.style.display = "";
+                if (jobErrorText) {
+                    jobErrorText.textContent = job.last_error;
+                }
+            } else {
+                jobError.style.display = "none";
+            }
+        }
+        if (jobLiveStatus) {
+            if (job.status === "running" || job.status === "queued") {
+                jobLiveStatus.style.display = "";
+                jobLiveStatus.textContent = "Live updates are active. Use Pause or Stop to control the job.";
+            } else if (job.status === "paused") {
+                jobLiveStatus.style.display = "";
+                jobLiveStatus.textContent = "Job is paused. Click Resume to continue.";
+            } else {
+                jobLiveStatus.style.display = "";
+                jobLiveStatus.textContent = `Job ${job.status_display}.`;
+            }
+        }
+        if (logBox && Array.isArray(payload.logs)) {
+            logBox.innerHTML = payload.logs.map((log) => `
+                <div class="log-line log-${log.level.toLowerCase()}">
+                    ${escapeHtml(log.created_at)} [${escapeHtml(log.level)}] ${escapeHtml(log.message)}
+                </div>
+            `).join("");
+        }
+        if (listingsBody && Array.isArray(payload.listings)) {
+            listingsBody.innerHTML = payload.listings.map((listing) => `
+                <tr>
+                    <td>${escapeHtml(listing.name)}</td>
+                    <td>${listing.phone ? escapeHtml(listing.phone) : '<span class="muted">No phone</span>'}</td>
+                    <td>${listing.email ? `<span class="truncate" title="${escapeHtml(listing.email)}">${escapeHtml(listing.email)}</span>` : '<span class="muted">No email</span>'}</td>
+                    <td>${listing.website ? `<a href="${escapeHtml(listing.website)}" target="_blank" rel="noopener">Website</a>` : '<span class="muted">No website</span>'}</td>
+                    <td>${escapeHtml(listing.location)}</td>
+                </tr>
+            `).join("");
+        }
+    };
+
+    const fetchJobStatus = () => {
+        if (!jobStatusUrl) {
+            return;
+        }
+        fetch(jobStatusUrl, { headers: { "Accept": "application/json" } })
+            .then((resp) => resp.ok ? resp.json() : null)
+            .then(renderJob)
+            .catch(() => {});
+    };
+
+    const setJobLiveUpdates = (enabled) => {
+        jobLiveUpdates = enabled;
+        const toggle = document.getElementById("job-live-toggle");
+        if (toggle) {
+            toggle.textContent = `Live updates: ${enabled ? "On" : "Off"}`;
+        }
+        if (jobTimer) {
+            clearInterval(jobTimer);
+            jobTimer = null;
+        }
+        if (enabled) {
+            jobTimer = setInterval(fetchJobStatus, 6000);
+        }
+    };
+
+    const refreshButton = document.getElementById("job-refresh");
+    if (refreshButton) {
+        refreshButton.addEventListener("click", fetchJobStatus);
+    }
+    const liveToggle = document.getElementById("job-live-toggle");
+    if (liveToggle) {
+        liveToggle.addEventListener("click", () => setJobLiveUpdates(!jobLiveUpdates));
+    }
+
+    if (jobStatusUrl) {
+        setJobLiveUpdates(true);
+    }
+
+    document.querySelectorAll(".resume-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const jobId = btn.dataset.resumeJob;
+            if (!jobId || !resumeModal) {
+                return;
+            }
+            if (resumeContinueForm) {
+                resumeContinueForm.action = `/jobs/${jobId}/resume/`;
+            }
+            if (resumeRestartForm) {
+                resumeRestartForm.action = `/jobs/${jobId}/resume/`;
+            }
+            resumeModal.classList.add("show");
+        });
+    });
+    if (resumeClose && resumeModal) {
+        resumeClose.addEventListener("click", () => resumeModal.classList.remove("show"));
+    }
+    if (resumeModal) {
+        resumeModal.addEventListener("click", (event) => {
+            if (event.target === resumeModal) {
+                resumeModal.classList.remove("show");
+            }
+        });
+    }
+
+    document.addEventListener("visibilitychange", () => {
+        if (!jobStatusUrl) {
+            return;
+        }
+        if (document.hidden) {
+            if (jobTimer) {
+                clearInterval(jobTimer);
+                jobTimer = null;
+            }
+        } else if (jobLiveUpdates && !jobTimer) {
+            fetchJobStatus();
+            jobTimer = setInterval(fetchJobStatus, 6000);
+        }
+    });
+</script>
+{% endblock %}

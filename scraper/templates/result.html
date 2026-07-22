@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Results{% endblock %}
+
+{% block head %}{% endblock %}
+
+{% block content %}
+        <h1>Results</h1>
+        {% if stats %}
+            <div class="stat-row">
+                <div class="stat-pill">Total: {{ stats.total }}</div>
+                <div class="stat-pill">With phone: {{ stats.with_phone }}</div>
+                <div class="stat-pill">With email: {{ stats.with_email }}</div>
+                <div class="stat-pill">With website: {{ stats.with_website }}</div>
+            </div>
+        {% endif %}
+        <div class="table-tools">
+            <div class="tool-group">
+                <input type="text" id="results-search" class="tool-input" placeholder="Search results">
+                <button type="button" class="tool-button" data-filter-button data-filter-target="#results-table" data-filter-input="#results-search">Search</button>
+            </div>
+        </div>
+        {% if listings %}
+            <table class="table" id="results-table">
+                <thead>
+                    <tr><th>Name</th><th>Phone</th><th>Email</th><th>Website</th><th>Maps</th><th>Location</th><th>Query</th></tr>
+                </thead>
+                <tbody>
+                    {% for listing in listings %}
+                        <tr>
+                            <td>{{ listing.name }}</td>
+                            <td>{% if listing.phone %}{{ listing.phone }}{% else %}<span class="muted">No phone</span>{% endif %}</td>
+                            <td>
+                                {% if listing.email %}
+                                    <span class="truncate" title="{{ listing.email }}">{{ listing.email }}</span>
+                                {% else %}
+                                    <span class="muted">No email</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if listing.website %}
+                                    <a href="{{ listing.website }}" target="_blank" rel="noopener">Website</a>
+                                {% else %}
+                                    <span class="muted">No website</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if listing.maps_url %}
+                                    <a href="{{ listing.maps_url }}" target="_blank" rel="noopener">Maps</a>
+                                {% else %}
+                                    <span class="muted">No link</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ listing.location }}</td>
+                            <td>{{ listing.search_query }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <div class="actions">
+                <a class="button-link" href="{% url 'download_csv' %}">Download CSV</a>
+                <a class="button-link" href="{% url 'download_phone_csv' %}">Download Phone</a>
+                <a class="button-link" href="{% url 'download_email_csv' %}">Download Email</a>
+                <a class="button-link" href="{% url 'download_website_csv' %}">Download Website</a>
+            </div>
+        {% else %}
+            <div class="status">
+                No results yet. Scraping runs in the background.
+                This page refreshes every 5 seconds.
+            </div>
+        {% endif %}
+        {% if recent_jobs %}
+            <h2 class="section-title">Recent Jobs</h2>
+            <div class="table-tools">
+                <div class="tool-group">
+                    <input type="text" id="results-jobs-search" class="tool-input" placeholder="Search jobs">
+                    <button type="button" class="tool-button" data-filter-button data-filter-target="#results-jobs-table" data-filter-input="#results-jobs-search">Search</button>
+                </div>
+                <div class="tool-group">
+                    <label for="results-jobs-sort" class="tool-label">Sort</label>
+                    <select id="results-jobs-sort" class="tool-select" data-sort-target="#results-jobs-table">
+                        <option value="id_desc">Newest</option>
+                        <option value="id_asc">Oldest</option>
+                        <option value="status">Status</option>
+                        <option value="collected_desc">Collected (high)</option>
+                        <option value="processed_desc">Processed (high)</option>
+                        <option value="query">Query (A-Z)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="card">
+                <table class="table" id="results-jobs-table">
+                    <thead>
+                        <tr><th>ID</th><th>Status</th><th>Query</th><th>Collected</th><th>Processed</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for job in recent_jobs %}
+                            <tr class="clickable-row" data-href="{% url 'job_detail' job.id %}" tabindex="0"
+                                data-id="{{ job.id }}"
+                                data-status="{{ job.status }}"
+                                data-collected="{{ job.collected_listings }}"
+                                data-processed="{{ job.processed_listings }}"
+                                data-query="{{ job.search_phrase|lower }}">
+                                <td>#{{ job.id }}</td>
+                                <td><span class="badge badge-{{ job.status }}">{{ job.get_status_display }}</span></td>
+                                <td>{{ job.search_phrase }}</td>
+                                <td>{{ job.collected_listings }}/{{ job.max_results }}</td>
+                                <td>{{ job.processed_listings }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+        <div class="footer-links">
+            <a href="{% url 'home' %}">Back to search</a>
+        </div>
+{% endblock %}

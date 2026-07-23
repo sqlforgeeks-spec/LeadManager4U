@@ -53,7 +53,7 @@
               <option value="1200" {% if global_cfg.global_daily_limit == 1200 %}selected{% endif %}>1200 / day</option>
               <option value="custom" id="global-limit-custom-opt">Custom…</option>
             </select>
-            <input type="number" name="global_daily_limit" id="global-limit-custom" class="form-input mt-8"
+            <input type="number" id="global-limit-custom" class="form-input mt-8"
               placeholder="Enter custom limit" style="display:none;" min="1"
               value="{{ global_cfg.global_daily_limit }}">
             <div class="form-hint">
@@ -72,7 +72,7 @@
               <option value="500" {% if global_cfg.smtp_rotation_limit == 500 %}selected{% endif %}>After 500 emails</option>
               <option value="custom" id="rotation-custom-opt">Custom…</option>
             </select>
-            <input type="number" name="smtp_rotation_limit" id="rotation-custom" class="form-input mt-8"
+            <input type="number" id="rotation-custom" class="form-input mt-8"
               placeholder="Enter custom rotation limit" style="display:none;" min="1"
               value="{{ global_cfg.smtp_rotation_limit }}">
             <div class="form-hint">
@@ -339,7 +339,7 @@ function onRotationChange(sel) {
   }
 }
 
-// Initialize — check if current value matches a preset
+// Initialize — set correct name attributes based on current values
 (function() {
   const gSel = document.getElementById('global-limit-sel');
   const rSel = document.getElementById('rotation-limit-sel');
@@ -348,16 +348,18 @@ function onRotationChange(sel) {
     const val = '{{ global_cfg.global_daily_limit }}';
     if (!presets.includes(val) && val !== '0') {
       gSel.value = 'custom';
-      onGlobalLimitChange(gSel);
     }
+    // Always call to ensure correct name assignment
+    onGlobalLimitChange(gSel);
   }
   if (rSel) {
     const presets = ['0','100','200','300','500'];
     const val = '{{ global_cfg.smtp_rotation_limit }}';
     if (!presets.includes(val) && val !== '0') {
       rSel.value = 'custom';
-      onRotationChange(rSel);
     }
+    // Always call to ensure correct name assignment
+    onRotationChange(rSel);
   }
 })();
 

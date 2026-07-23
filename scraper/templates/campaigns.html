@@ -10,21 +10,6 @@
 
 {% block content %}
 
-<!-- Global cap info bar -->
-{% if global_cfg.global_daily_limit %}
-<div class="alert alert-info mb-24" style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
-  <span>⚙️ <strong>Global daily cap:</strong> {{ global_cfg.global_daily_limit }} emails/day &nbsp;·&nbsp; <strong>{{ sent_today }}</strong> sent today</span>
-  <div style="flex:1; min-width:120px; height:8px; background:#BFDBFE; border-radius:4px; overflow:hidden;">
-    <div style="height:100%; width:{% widthratio sent_today global_cfg.global_daily_limit 100 %}%; background:var(--primary); border-radius:4px;"></div>
-  </div>
-  <a href="{% url 'smtp_profiles' %}" class="btn btn-ghost btn-sm" style="white-space:nowrap;">Edit Limits →</a>
-</div>
-{% else %}
-<div class="alert" style="background:#F8FAFC; border:1px solid var(--border); margin-bottom:24px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-  <span style="font-size:13px; color:var(--text-muted);">No global send limit set. All campaigns can send without a cap.</span>
-  <a href="{% url 'smtp_profiles' %}" class="btn btn-ghost btn-sm">⚙️ Set Limit →</a>
-</div>
-{% endif %}
 
 {% if campaigns %}
 <div class="card">

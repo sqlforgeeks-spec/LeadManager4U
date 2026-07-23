@@ -1,0 +1,42 @@
+in "https://9d7b1438-c770-462b-9f79-3866729ee9dd-00-3t24gv4ljapxo.sisko.replit.dev/campaigns/2/" email campaign we had one feature that us removed i guess i want to set user the campaign daily sending limit like 100 200 300 600 900 1200 and also allow user to enter the limit because we will use brevo or gmial of one account and second account as well of smtp right? that allows only 300 mail per day so let user select the limit as well on the "https://9d7b1438-c770-462b-9f79-3866729ee9dd-00-3t24gv4ljapxo.sisko.replit.dev/campaigns/" page and if there are 2 smtp added or more than that and limit is set as 600 or more, then let it auto select new smtp after 300 email is sent. and also allow user to save the email template as well on email page so that user just need to select the email template or replace it in the campaign ongoing for the easiness and also allow user to send a manual mail to test the smtp you know what i want think like a professional ceo and do it you have full power to design and add new feature or alter
+
+5 minutes ago
+Exploring campaign files
+
+Exploring campaign files
+Let me explore all the relevant files in parallel first.
+
+
+10 actions
+Let me read everything I need in one shot.
+
+
+6 actions
+I have a complete picture now. Let me design and build all features in parallel:
+
+Plan:
+
+EmailTemplate model — save/load templates
+daily_limit on EmailCampaign + daily_limit on SmtpProfile for per-profile cap
+Multi-SMTP rotation in email_sender.py — when profile hits its cap, reconnect to next profile
+Test SMTP — send a test email from any saved profile
+Campaign-level daily limit UI on both campaigns list and detail
+Template library UI on new campaign page
+SMTP profiles page gets a "Send Test" button
+
+4 actions
+Good, I have everything. Now implementing all features in parallel batches.
+
+Batch 1: Model changes + migration
+
+
+5 actions
+Migration created. Now applying it and building all remaining pieces in parallel.
+
+
+3 actions
+Now adding all views, URLs, and templates in parallel batches.
+
+
+3 actions
+You've reached your daily free quota limit. It will reset at 12:00 AM UTC.

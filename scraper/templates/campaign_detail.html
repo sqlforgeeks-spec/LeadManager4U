@@ -32,6 +32,9 @@
   {% if campaign.status == "scheduled" and campaign.scheduled_at %}
     <span class="badge badge-queued">⏰ Scheduled: {{ campaign.scheduled_at|date:"M j, Y H:i" }}</span>
   {% endif %}
+  {% if campaign.daily_limit %}
+    <span class="badge" style="background:var(--warning-light); color:var(--warning);">⏱ {{ campaign.daily_limit }}/day limit</span>
+  {% endif %}
 </div>
 
 <div class="stats-grid mb-24">
@@ -123,9 +126,36 @@
       <div class="meta-item"><div class="meta-label">From</div><div class="meta-value">{{ campaign.from_name|default:"" }} &lt;{{ campaign.from_email }}&gt;</div></div>
       <div class="meta-item"><div class="meta-label">Reply-To</div><div class="meta-value">{{ campaign.reply_to|default:"—" }}</div></div>
       <div class="meta-item"><div class="meta-label">SMTP</div><div class="meta-value font-mono" style="font-size:12px;">{{ campaign.smtp_host }}:{{ campaign.smtp_port }}</div></div>
+      <div class="meta-item">
+        <div class="meta-label">Daily Limit</div>
+        <div class="meta-value">
+          {% if campaign.daily_limit %}
+            <span class="badge" style="background:var(--warning-light); color:var(--warning);">{{ campaign.daily_limit }} emails/day</span>
+          {% else %}
+            <span class="text-muted">Unlimited</span>
+          {% endif %}
+        </div>
+      </div>
       <div class="meta-item"><div class="meta-label">Job Filter</div><div class="meta-value">{% if campaign.job_filter %}<a href="{% if campaign.job_filter.source == 'maps' %}{% url 'job_detail' campaign.job_filter.id %}{% else %}{% url 'search_job_detail' campaign.job_filter.id %}{% endif %}" class="text-primary">Job #{{ campaign.job_filter.id }} — {{ campaign.job_filter.search_phrase }}</a>{% else %}All leads{% endif %}</div></div>
       <div class="meta-item"><div class="meta-label">Created</div><div class="meta-value">{{ campaign.created_at|date:"Y-m-d H:i" }}</div></div>
     </div>
+
+    {% with extra=campaign.extra_smtp_profiles.all %}
+    {% if extra %}
+    <div class="mt-16">
+      <div class="form-label mb-4">SMTP Rotation Profiles</div>
+      <div class="flex gap-8" style="flex-wrap:wrap;">
+        {% for p in extra %}
+        <span class="badge badge-queued" style="font-size:12px; padding:4px 10px;">
+          {{ p.name }}{% if p.daily_limit %} · {{ p.daily_limit }}/day{% endif %}
+        </span>
+        {% endfor %}
+      </div>
+      <div class="form-hint mt-4">Campaign auto-rotates through these when the primary SMTP hits its daily cap.</div>
+    </div>
+    {% endif %}
+    {% endwith %}
+
     <div class="mt-16">
       <div class="form-label mb-4">Subject</div>
       <div class="body-preview">{{ campaign.subject }}</div>

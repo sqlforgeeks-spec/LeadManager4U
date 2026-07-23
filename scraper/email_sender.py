@@ -104,12 +104,24 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
     # ── Build the ordered list of SMTP credentials to try ────────────────────
     # First: the campaign's own inline credentials (always present for backward compat)
     # Then: any extra profiles, in the order they were added
+    from .models import SmtpProfile as _SmtpProfile
     smtp_slots = []
     if campaign.smtp_user:  # inline credentials exist
+        # Try to find a matching saved SmtpProfile so we can apply its daily cap
+        primary_cap = 0
+        try:
+            matched = _SmtpProfile.objects.filter(
+                user=campaign.smtp_user,
+                host=campaign.smtp_host,
+            ).first()
+            if matched:
+                primary_cap = matched.daily_limit  # 0 = unlimited
+        except Exception:
+            pass
         smtp_slots.append({
             "label": campaign.smtp_user,
             "creds": _smtp_creds_from_campaign(campaign),
-            "cap": 0,  # will be overridden below if profile matched, else unlimited
+            "cap": primary_cap,
         })
     for profile in campaign.extra_smtp_profiles.order_by("name"):
         smtp_slots.append({
@@ -281,7 +293,7 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
 
     if daily_limit_reached:
         campaign.status = "stopped"
-        log(f"Campaign paused (daily limit). Sent {sent}, failed {failed}, skipped {skipped}. Resume tomorrow.")
+        log(f"Campaign stopped — daily send limit reached. Sent {sent}, failed {failed}, skipped {skipped}. Use 'Resend Failed' or 'Send Now' to continue tomorrow.")
     elif check_stop():
         campaign.status = "stopped"
     else:

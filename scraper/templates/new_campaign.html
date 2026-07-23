@@ -14,11 +14,29 @@
   <strong>📧 Personalisation:</strong> Use <code>{name}</code>, <code>{email}</code>, <code>{phone}</code>, <code>{website}</code>, <code>{location}</code> in subject and body — replaced per recipient.
 </div>
 
+<!-- Saved Templates Panel -->
+<div class="card mb-24" id="saved-templates-card">
+  <div class="card-header" style="cursor:pointer;" onclick="toggleSavedTemplates()">
+    <div class="card-title">📁 Saved Email Templates <span id="saved-count" class="badge badge-queued" style="margin-left:8px;">…</span></div>
+    <span id="saved-toggle-icon" style="color:var(--text-muted); font-size:18px;">▼</span>
+  </div>
+  <div id="saved-templates-body" style="display:none;">
+    <div class="card-body">
+      <div id="saved-templates-list">
+        <div style="color:var(--text-muted); font-size:13px;">Loading…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- AI Template Generator -->
 <div class="card mb-24" id="ai-template-card" style="border:2px solid #8B5CF6; background:linear-gradient(135deg,#F5F3FF,#FAFAFA);">
   <div class="card-header" style="background:transparent; border-color:#EDE9FE;">
     <div class="card-title" style="color:#7C3AED;">✨ AI Email Template Generator</div>
-    <span class="badge" style="background:#F5F3FF; color:#7C3AED;">Beta</span>
+    <div class="flex gap-8 items-center">
+      <span class="badge" style="background:#F5F3FF; color:#7C3AED;">Beta</span>
+      <button type="button" class="btn btn-sm" id="save-template-btn" style="background:#10B981; color:#fff; border-color:#10B981; display:none;">💾 Save Current as Template</button>
+    </div>
   </div>
   <div class="card-body">
     <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">
@@ -35,7 +53,34 @@
   </div>
 </div>
 
-<form method="post" action="{% url 'new_campaign' %}">
+<!-- Save Template Modal -->
+<div id="save-tpl-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1000; align-items:center; justify-content:center;">
+  <div class="card" style="width:420px; max-width:90vw;">
+    <div class="card-header">
+      <div class="card-title">💾 Save as Template</div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="closeSaveTplModal()">✕</button>
+    </div>
+    <div class="card-body">
+      <div class="form-group">
+        <label class="form-label">Template Name *</label>
+        <input type="text" id="tpl-name-input" class="form-input" placeholder="e.g. Dental Outreach – Urgency">
+      </div>
+      <div class="form-group mt-12">
+        <label class="form-label">Industry (optional)</label>
+        <input type="text" id="tpl-industry-input" class="form-input" placeholder="e.g. dental, plumbing…">
+      </div>
+      <div id="save-tpl-result" style="display:none; margin-top:10px; padding:8px 12px; border-radius:8px; font-size:13px;"></div>
+    </div>
+    <div class="card-body" style="padding-top:0;">
+      <div class="flex gap-8">
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveTemplate()">Save</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="closeSaveTplModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<form method="post" action="{% url 'new_campaign' %}" id="campaign-form">
   {% csrf_token %}
 
   <div class="card mb-24">
@@ -127,6 +172,69 @@
     </div>
   </div>
 
+  <!-- Daily Limit + SMTP Rotation -->
+  <div class="card mb-24">
+    <div class="card-header"><div class="card-title">⚙️ Daily Sending Limits &amp; SMTP Rotation</div></div>
+    <div class="card-body">
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Campaign Daily Send Limit</label>
+          <select name="daily_limit" class="form-select" id="daily-limit-sel">
+            <option value="0">Unlimited</option>
+            <option value="100">100 / day</option>
+            <option value="200">200 / day</option>
+            <option value="300">300 / day</option>
+            <option value="600">600 / day</option>
+            <option value="900">900 / day</option>
+            <option value="1200">1200 / day</option>
+            <option value="custom">Custom…</option>
+          </select>
+          <input type="number" name="daily_limit_custom" id="campaign-limit-custom" class="form-input mt-8"
+            placeholder="Enter custom daily limit" style="display:none;" min="1">
+          <div class="form-hint">Campaign stops automatically when this limit is hit. Use "Send Now" the next day to continue.</div>
+        </div>
+        {% if smtp_profiles %}
+        <div class="form-group full">
+          <label class="form-label">Additional SMTP Profiles for Rotation (optional)</label>
+          <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(220px,1fr)); gap:8px; margin-top:6px;">
+            {% for p in smtp_profiles %}
+            <label class="form-check" style="padding:10px 14px; border:1px solid var(--border); border-radius:8px; cursor:pointer;">
+              <input type="checkbox" name="extra_smtp_profiles" value="{{ p.id }}">
+              <span>
+                <strong>{{ p.name }}</strong><br>
+                <small class="text-muted font-mono">{{ p.user }}</small><br>
+                <small class="text-muted">Limit: {% if p.daily_limit %}{{ p.daily_limit }}/day{% else %}Unlimited{% endif %}</small>
+              </span>
+            </label>
+            {% endfor %}
+          </div>
+          <div class="form-hint mt-8">
+            When the primary SMTP (above) hits its per-profile daily limit, the campaign automatically rotates through these accounts.
+            A profile set to <strong>300/day</strong> with 2 extras at 300 each allows up to 900 emails per day total.
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {% if prefill_listings %}
+  <input type="hidden" name="listing_ids" value="{{ prefill_listing_ids }}">
+  <div class="card mb-24">
+    <div class="card-header"><div class="card-title">🎯 Selected Recipients ({{ prefill_listings|length }})</div></div>
+    <div class="card-body">
+      <div style="max-height:200px; overflow-y:auto;">
+        {% for l in prefill_listings %}
+        <div style="font-size:13px; padding:4px 0; border-bottom:1px solid var(--border);">
+          <strong>{{ l.name }}</strong> — <span class="font-mono text-primary">{{ l.email }}</span>
+          {% if l.location %}<span class="text-muted"> · {{ l.location }}</span>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   <div class="flex gap-12">
     <button type="submit" class="btn btn-primary btn-lg">Create Campaign</button>
     <a href="{% url 'campaigns' %}" class="btn btn-secondary btn-lg">Cancel</a>
@@ -151,7 +259,6 @@ if (picker) {
     document.getElementById('smtp-port').value = port || '587';
     document.getElementById('smtp-user').value = user || '';
     document.getElementById('smtp-tls').checked = tls;
-    // Also fill from_email if empty
     const fromEmail = document.getElementById('from-email');
     if (!fromEmail.value && user) fromEmail.value = user;
   });
@@ -163,13 +270,138 @@ const jobId = params.get('job_id');
 if (jobId) {
   const sel = document.getElementById('job-filter-sel');
   if (sel) {
-    [...sel.options].forEach(opt => {
-      if (opt.value === jobId) opt.selected = true;
-    });
+    [...sel.options].forEach(opt => { if (opt.value === jobId) opt.selected = true; });
   }
 }
 
-// AI Template Generator
+// Campaign daily limit custom
+const dlSel = document.getElementById('daily-limit-sel');
+const dlCustom = document.getElementById('campaign-limit-custom');
+if (dlSel && dlCustom) {
+  dlSel.addEventListener('change', () => {
+    dlCustom.style.display = dlSel.value === 'custom' ? '' : 'none';
+    dlCustom.required = dlSel.value === 'custom';
+  });
+  // Server-side reads "daily_limit_custom" when daily_limit == "custom" — no JS trickery needed.
+}
+
+// ── Saved Templates Panel ────────────────────────────────────────────────────
+let _savedTemplatesLoaded = false;
+function toggleSavedTemplates() {
+  const body = document.getElementById('saved-templates-body');
+  const icon = document.getElementById('saved-toggle-icon');
+  const isHidden = body.style.display === 'none';
+  body.style.display = isHidden ? '' : 'none';
+  icon.textContent = isHidden ? '▲' : '▼';
+  if (isHidden && !_savedTemplatesLoaded) loadSavedTemplates();
+}
+function loadSavedTemplates() {
+  fetch('/api/email-templates/')
+    .then(r => r.json())
+    .then(data => {
+      _savedTemplatesLoaded = true;
+      const list = document.getElementById('saved-templates-list');
+      const count = document.getElementById('saved-count');
+      const templates = data.templates || [];
+      count.textContent = templates.length;
+      if (!templates.length) {
+        list.innerHTML = '<div style="color:var(--text-muted); font-size:13px;">No saved templates yet. Generate one with AI or save the current form below.</div>';
+        return;
+      }
+      list.innerHTML = templates.map(t => `
+        <div class="saved-tpl-row" style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border);">
+          <div style="flex:1; min-width:0;">
+            <strong style="font-size:13px;">${escHtml(t.name)}</strong>
+            ${t.industry ? `<span class="badge badge-queued" style="margin-left:6px; font-size:11px;">${escHtml(t.industry)}</span>` : ''}
+            <div style="font-size:12px; color:var(--text-muted); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escHtml(t.subject)}</div>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm saved-tpl-load-btn">Load</button>
+          <button type="button" class="btn btn-ghost btn-sm text-danger saved-tpl-del-btn">🗑</button>
+        </div>
+      `).join('');
+      // Bind handlers using data stored in JS (never injected into HTML attributes)
+      list.querySelectorAll('.saved-tpl-row').forEach((row, i) => {
+        const t = templates[i];
+        row.querySelector('.saved-tpl-load-btn').addEventListener('click', () =>
+          loadSavedTemplate(t.subject, t.body));
+        row.querySelector('.saved-tpl-del-btn').addEventListener('click', function() {
+          deleteSavedTemplate(t.id, this);
+        });
+      });
+    })
+    .catch(() => {
+      document.getElementById('saved-templates-list').innerHTML = '<div style="color:var(--danger); font-size:13px;">Failed to load templates.</div>';
+    });
+}
+function loadSavedTemplate(subject, body) {
+  document.getElementById('campaign-subject').value = subject;
+  document.getElementById('campaign-body').value = body;
+  document.getElementById('campaign-form').scrollIntoView({ behavior: 'smooth' });
+}
+function deleteSavedTemplate(id, btn) {
+  if (!confirm('Delete this saved template?')) return;
+  const fd = new FormData();
+  fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+  fetch(`/api/email-templates/${id}/delete/`, { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) { _savedTemplatesLoaded = false; loadSavedTemplates(); }
+    });
+}
+
+// ── Save Template Modal ───────────────────────────────────────────────────────
+document.getElementById('save-template-btn')?.addEventListener('click', () => {
+  document.getElementById('save-tpl-modal').style.display = 'flex';
+});
+function closeSaveTplModal() {
+  document.getElementById('save-tpl-modal').style.display = 'none';
+  document.getElementById('save-tpl-result').style.display = 'none';
+}
+function saveTemplate() {
+  const name = document.getElementById('tpl-name-input').value.trim();
+  const industry = document.getElementById('tpl-industry-input').value.trim();
+  const subject = document.getElementById('campaign-subject').value.trim();
+  const body = document.getElementById('campaign-body').value.trim();
+  const resultEl = document.getElementById('save-tpl-result');
+  if (!name) { document.getElementById('tpl-name-input').focus(); return; }
+  if (!subject || !body) {
+    resultEl.style.display = 'block';
+    resultEl.style.background = 'var(--danger-light)';
+    resultEl.style.color = 'var(--danger)';
+    resultEl.textContent = 'Fill in subject and body in the campaign form first.';
+    return;
+  }
+  fetch('/api/email-templates/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+    body: JSON.stringify({ name, subject, body, industry }),
+  })
+    .then(r => r.json())
+    .then(data => {
+      resultEl.style.display = 'block';
+      if (data.ok) {
+        resultEl.style.background = 'var(--success-light)';
+        resultEl.style.color = 'var(--success)';
+        resultEl.textContent = `✅ Saved "${data.name}" to templates.`;
+        _savedTemplatesLoaded = false; // force reload next open
+        setTimeout(closeSaveTplModal, 1500);
+      } else {
+        resultEl.style.background = 'var(--danger-light)';
+        resultEl.style.color = 'var(--danger)';
+        resultEl.textContent = data.msg || 'Save failed.';
+      }
+    });
+}
+// Show "Save as Template" button once subject+body have content
+function updateSaveBtnVisibility() {
+  const hasContent = document.getElementById('campaign-subject')?.value.trim() &&
+                     document.getElementById('campaign-body')?.value.trim();
+  document.getElementById('save-template-btn').style.display = hasContent ? '' : 'none';
+}
+document.getElementById('campaign-subject')?.addEventListener('input', updateSaveBtnVisibility);
+document.getElementById('campaign-body')?.addEventListener('input', updateSaveBtnVisibility);
+
+// ── AI Template Generator ────────────────────────────────────────────────────
 const aiBtn = document.getElementById('ai-gen-btn');
 const aiInput = document.getElementById('ai-phrase-input');
 const aiOut = document.getElementById('ai-templates-out');
@@ -179,14 +411,12 @@ const aiLoading = document.getElementById('ai-loading');
 function escHtml(s) { return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
 
 function loadTemplate(subject, body, industry) {
-  const subjectEl = document.getElementById('campaign-subject');
-  const bodyEl = document.getElementById('campaign-body');
+  document.getElementById('campaign-subject').value = subject;
+  document.getElementById('campaign-body').value = body;
   const nameEl = document.getElementById('campaign-name');
-  if (subjectEl) subjectEl.value = subject;
-  if (bodyEl) bodyEl.value = body;
   if (nameEl && !nameEl.value) nameEl.value = `${industry.charAt(0).toUpperCase() + industry.slice(1)} Outreach — ${new Date().toLocaleDateString()}`;
-  // Scroll to form
   document.querySelector('form')?.scrollIntoView({ behavior: 'smooth' });
+  updateSaveBtnVisibility();
 }
 
 if (aiBtn && aiInput) {
@@ -204,7 +434,6 @@ if (aiBtn && aiInput) {
         const templates = data.templates || [];
         const industry = data.industry || 'default';
         if (!templates.length) { aiOut.style.display = 'none'; return; }
-        // Use data-attributes to avoid quote-collision inside onclick="..."
         aiCards.innerHTML = templates.map((t, i) => `
           <div class="ai-template-card" data-subject="" data-body="" data-industry="">
             <div class="ai-tmpl-label">Template ${i+1}</div>
@@ -213,7 +442,6 @@ if (aiBtn && aiInput) {
             <div class="ai-tmpl-use">Click to use →</div>
           </div>
         `).join('');
-        // Attach data and click handlers after DOM creation to avoid attribute quoting issues
         aiCards.querySelectorAll('.ai-template-card').forEach((el, i) => {
           const t = templates[i];
           el.dataset.subject  = t.subject;
@@ -225,7 +453,6 @@ if (aiBtn && aiInput) {
       })
       .catch(() => { aiLoading.style.display = 'none'; aiBtn.disabled = false; });
   });
-  // Auto-trigger if there's a phrase from job filter name
   const jobSel = document.getElementById('job-filter-sel');
   if (jobSel && jobSel.value) {
     const txt = jobSel.options[jobSel.selectedIndex]?.text || '';

@@ -46,7 +46,12 @@ urlpatterns = [
     path('smtp/', views.smtp_profiles, name='smtp_profiles'),
     path('smtp/create/', views.create_smtp_profile, name='create_smtp_profile'),
     path('smtp/<int:profile_id>/delete/', views.delete_smtp_profile, name='delete_smtp_profile'),
+    path('smtp/<int:profile_id>/test/', views.test_smtp_view, name='test_smtp'),
     path('api/smtp/<int:profile_id>/', views.api_smtp_profile, name='api_smtp_profile'),
+
+    # Email Templates
+    path('api/email-templates/', views.api_email_templates, name='api_email_templates'),
+    path('api/email-templates/<int:template_id>/delete/', views.delete_email_template, name='delete_email_template'),
 
     # Downloads – all leads (support filter params via GET)
     path('download/', views.download_csv, name='download_csv'),

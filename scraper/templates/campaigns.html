@@ -19,7 +19,11 @@
   <div class="table-wrap">
     <table class="table" id="campaigns-table">
       <thead>
-        <tr><th>#</th><th>Name</th><th>Status</th><th>Subject</th><th>Targets</th><th>Sent</th><th>Failed</th><th>Scheduled</th><th>Actions</th></tr>
+        <tr>
+          <th>#</th><th>Name</th><th>Status</th><th>Subject</th>
+          <th>Targets</th><th>Sent</th><th>Failed</th>
+          <th>Daily Limit</th><th>Scheduled</th><th>Actions</th>
+        </tr>
       </thead>
       <tbody>
         {% for campaign in campaigns %}
@@ -27,11 +31,18 @@
           <td class="text-muted font-mono">#{{ campaign.id }}</td>
           <td><strong>{{ campaign.name }}</strong></td>
           <td><span class="badge badge-{{ campaign.status }}">{{ campaign.get_status_display }}</span></td>
-          <td><span class="truncate" title="{{ campaign.subject }}" style="max-width:200px;">{{ campaign.subject }}</span></td>
+          <td><span class="truncate" title="{{ campaign.subject }}" style="max-width:180px;">{{ campaign.subject }}</span></td>
           <td>{{ campaign.total_targets }}</td>
           <td class="text-success">{{ campaign.total_sent }}</td>
           <td class="text-danger">{{ campaign.total_failed }}</td>
-          <td class="text-muted" style="font-size:12px;">{% if campaign.scheduled_at %}⏰ {{ campaign.scheduled_at|date:"M j H:i" }}{% else %}—{% endif %}</td>
+          <td class="text-muted" style="font-size:12px;">
+            {% if campaign.daily_limit %}
+              <span class="badge badge-queued">{{ campaign.daily_limit }}/day</span>
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-muted" style="font-size:12px;">
+            {% if campaign.scheduled_at %}⏰ {{ campaign.scheduled_at|date:"M j H:i" }}{% else %}—{% endif %}
+          </td>
           <td class="no-row-click">
             <div class="action-group">
               <a href="{% url 'campaign_detail' campaign.id %}" class="btn btn-secondary btn-sm">View</a>

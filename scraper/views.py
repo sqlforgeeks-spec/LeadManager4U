@@ -1784,9 +1784,62 @@ def create_smtp_profile(request):
         port = int(request.POST.get("port", "587"))
     except ValueError:
         port = 587
+    try:
+        daily_limit = int(request.POST.get("daily_limit", "300"))
+    except ValueError:
+        daily_limit = 300
     if name and user:
-        SmtpProfile.objects.create(name=name, host=host, port=port, user=user, password=password, use_tls=use_tls)
+        SmtpProfile.objects.create(
+            name=name, host=host, port=port, user=user,
+            password=password, use_tls=use_tls, daily_limit=daily_limit,
+        )
     return redirect("smtp_profiles")
+
+
+def test_smtp_view(request, profile_id):
+    """AJAX: send a test email from a saved SMTP profile."""
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "msg": "POST required."}, status=405)
+    from .email_sender import send_test_email
+    to_email = request.POST.get("to_email", "").strip()
+    if not to_email:
+        return JsonResponse({"ok": False, "msg": "Recipient email is required."})
+    ok, msg = send_test_email(profile_id, to_email)
+    return JsonResponse({"ok": ok, "msg": msg})
+
+
+def api_email_templates(request):
+    """GET: list templates. POST: save new template."""
+    from .models import EmailTemplate
+    if request.method == "POST":
+        import json
+        try:
+            data = json.loads(request.body)
+        except Exception:
+            data = {}
+        name = (data.get("name") or "").strip()
+        subject = (data.get("subject") or "").strip()
+        body = (data.get("body") or "").strip()
+        industry = (data.get("industry") or "").strip()
+        if not name or not subject or not body:
+            return JsonResponse({"ok": False, "msg": "name, subject and body are required."})
+        tpl = EmailTemplate.objects.create(name=name, subject=subject, body=body, industry=industry)
+        return JsonResponse({"ok": True, "id": tpl.id, "name": tpl.name})
+    # GET
+    templates = list(
+        EmailTemplate.objects.values("id", "name", "subject", "body", "industry", "created_at")
+    )
+    for t in templates:
+        t["created_at"] = t["created_at"].strftime("%Y-%m-%d") if t["created_at"] else ""
+    return JsonResponse({"templates": templates})
+
+
+@require_POST
+def delete_email_template(request, template_id):
+    from .models import EmailTemplate
+    tpl = get_object_or_404(EmailTemplate, id=template_id)
+    tpl.delete()
+    return JsonResponse({"ok": True})
 
 
 @require_POST
@@ -1851,13 +1904,35 @@ def new_campaign(request):
             except (ScrapeJob.DoesNotExist, ValueError):
                 pass
 
+        daily_limit_raw = request.POST.get("daily_limit", "0")
+        if daily_limit_raw == "custom":
+            try:
+                daily_limit = max(0, int(request.POST.get("daily_limit_custom", "0")))
+            except ValueError:
+                daily_limit = 0
+        else:
+            try:
+                daily_limit = max(0, int(daily_limit_raw))
+            except ValueError:
+                daily_limit = 0
+
+        # Extra SMTP profile IDs for rotation
+        extra_profile_ids = request.POST.getlist("extra_smtp_profiles")
+
         campaign = EmailCampaign.objects.create(
             name=name, subject=subject, body=body,
             from_name=from_name, from_email=from_email, reply_to=reply_to,
             smtp_host=smtp_host, smtp_port=smtp_port, smtp_user=smtp_user,
             smtp_password=smtp_password, use_tls=use_tls,
             job_filter=job_filter,
+            daily_limit=daily_limit,
         )
+        if extra_profile_ids:
+            try:
+                ids = [int(x) for x in extra_profile_ids if x.isdigit()]
+                campaign.extra_smtp_profiles.set(SmtpProfile.objects.filter(id__in=ids))
+            except Exception:
+                pass
 
         # If specific listing IDs provided, use only those
         if listing_ids_raw:

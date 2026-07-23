@@ -13,6 +13,7 @@
 <div class="alert alert-info mb-24">
   <strong>💡 SMTP Profiles</strong> let you save your email sending credentials once and reuse them across campaigns.
   For Gmail, use an <a href="https://myaccount.google.com/apppasswords" target="_blank" class="text-primary">App Password</a> instead of your account password.
+  Set a <strong>daily limit</strong> so the campaign auto-rotates to the next profile when one hits its cap.
 </div>
 
 <!-- Add Profile Form (hidden by default) -->
@@ -47,6 +48,21 @@
           <div class="form-hint">For Gmail: use a 16-character App Password.</div>
         </div>
         <div class="form-group">
+          <label class="form-label">Daily Send Limit</label>
+          <select name="daily_limit" class="form-select">
+            <option value="0">Unlimited</option>
+            <option value="100">100 / day</option>
+            <option value="200">200 / day</option>
+            <option value="300" selected>300 / day (Gmail free)</option>
+            <option value="600">600 / day</option>
+            <option value="900">900 / day</option>
+            <option value="1200">1200 / day</option>
+            <option value="custom">Custom…</option>
+          </select>
+          <input type="number" name="daily_limit_custom" id="daily-limit-custom" class="form-input mt-8" placeholder="Enter custom limit" style="display:none;" min="1">
+          <div class="form-hint">Campaign auto-rotates to the next SMTP when this profile hits its cap.</div>
+        </div>
+        <div class="form-group">
           <label class="form-check">
             <input type="checkbox" name="use_tls" value="on" checked>
             Use TLS (STARTTLS — recommended for port 587)
@@ -61,13 +77,37 @@
   </div>
 </div>
 
+<!-- Test Email Modal -->
+<div id="test-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1000; align-items:center; justify-content:center;">
+  <div class="card" style="width:400px; max-width:90vw;">
+    <div class="card-header">
+      <div class="card-title">📨 Send Test Email</div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="closeTestModal()">✕</button>
+    </div>
+    <div class="card-body">
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">Send a test email via <strong id="test-profile-name"></strong> to verify it's working.</p>
+      <div class="form-group">
+        <label class="form-label">Send test to (email address) *</label>
+        <input type="email" id="test-to-email" class="form-input" placeholder="you@example.com" required>
+      </div>
+      <div id="test-result" style="display:none; margin-top:12px; padding:10px 14px; border-radius:8px; font-size:13px;"></div>
+    </div>
+    <div class="card-body" style="padding-top:0;">
+      <div class="flex gap-8">
+        <button type="button" class="btn btn-primary btn-sm" id="test-send-btn" onclick="sendTestEmail()">Send Test</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="closeTestModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Profiles list -->
 {% if profiles %}
 <div class="card">
   <div class="table-wrap">
     <table class="table">
       <thead>
-        <tr><th>#</th><th>Profile Name</th><th>Host</th><th>Port</th><th>Username</th><th>TLS</th><th>Actions</th></tr>
+        <tr><th>#</th><th>Profile Name</th><th>Host</th><th>Port</th><th>Username</th><th>TLS</th><th>Daily Limit</th><th>Actions</th></tr>
       </thead>
       <tbody>
         {% for p in profiles %}
@@ -78,12 +118,21 @@
           <td class="text-muted">{{ p.port }}</td>
           <td class="font-mono">{{ p.user }}</td>
           <td>{% if p.use_tls %}<span class="badge badge-completed">✓ TLS</span>{% else %}<span class="badge badge-paused">SSL</span>{% endif %}</td>
+          <td>
+            {% if p.daily_limit %}
+              <span class="badge badge-queued">{{ p.daily_limit }}/day</span>
+            {% else %}
+              <span class="text-muted">Unlimited</span>
+            {% endif %}
+          </td>
           <td class="no-row-click">
             <div class="action-group">
-              <a href="{% url 'new_campaign' %}" class="btn btn-secondary btn-sm">Use in Campaign</a>
+              <button type="button" class="btn btn-secondary btn-sm"
+                onclick="openTestModal({{ p.id }}, '{{ p.name|escapejs }}')">📨 Test</button>
+              <a href="{% url 'new_campaign' %}" class="btn btn-ghost btn-sm">Use in Campaign</a>
               <form method="post" action="{% url 'delete_smtp_profile' p.id %}" onsubmit="return confirm('Delete this SMTP profile?')">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-ghost btn-sm text-danger">🗑 Delete</button>
+                <button type="submit" class="btn btn-ghost btn-sm text-danger">🗑</button>
               </form>
             </div>
           </td>
@@ -117,6 +166,15 @@
           Host: <code>smtp.gmail.com</code> · Port: <code>587</code> · TLS: ✓<br>
           Use an <strong>App Password</strong> (not your Gmail password).<br>
           Enable 2FA → Google Account → Security → App Passwords.
+          Daily limit: ~300 free / ~2000 Workspace.
+        </div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Brevo (Sendinblue)</div>
+        <div style="font-size:13px; color:var(--text-muted); margin-top:4px;">
+          Host: <code>smtp-relay.brevo.com</code> · Port: <code>587</code> · TLS: ✓<br>
+          Username: your Brevo account email · Password: SMTP key from Brevo dashboard.<br>
+          Free plan: 300 emails/day.
         </div>
       </div>
       <div class="meta-item">
@@ -127,17 +185,10 @@
         </div>
       </div>
       <div class="meta-item">
-        <div class="meta-label">SendGrid</div>
+        <div class="meta-label">SendGrid / Mailgun</div>
         <div style="font-size:13px; color:var(--text-muted); margin-top:4px;">
-          Host: <code>smtp.sendgrid.net</code> · Port: <code>587</code> · TLS: ✓<br>
-          Username: <code>apikey</code> · Password: your API key.
-        </div>
-      </div>
-      <div class="meta-item">
-        <div class="meta-label">Mailgun</div>
-        <div style="font-size:13px; color:var(--text-muted); margin-top:4px;">
-          Host: <code>smtp.mailgun.org</code> · Port: <code>587</code> · TLS: ✓<br>
-          Username/password from your Mailgun SMTP credentials.
+          <strong>SendGrid:</strong> <code>smtp.sendgrid.net</code> · user: <code>apikey</code> · pass: API key<br>
+          <strong>Mailgun:</strong> <code>smtp.mailgun.org</code> · port: <code>587</code>
         </div>
       </div>
     </div>
@@ -155,5 +206,66 @@ document.getElementById('add-profile-btn')?.addEventListener('click', show);
 document.getElementById('add-profile-btn2')?.addEventListener('click', show);
 document.getElementById('close-form-btn')?.addEventListener('click', hide);
 document.getElementById('cancel-form-btn')?.addEventListener('click', hide);
+
+// Custom daily limit
+const limitSel = form?.querySelector('select[name="daily_limit"]');
+const limitCustom = document.getElementById('daily-limit-custom');
+if (limitSel && limitCustom) {
+  limitSel.addEventListener('change', () => {
+    limitCustom.style.display = limitSel.value === 'custom' ? '' : 'none';
+    if (limitSel.value !== 'custom') limitCustom.name = '';
+    else limitCustom.name = 'daily_limit';
+  });
+  form.querySelector('form').addEventListener('submit', () => {
+    if (limitSel.value === 'custom') {
+      limitSel.disabled = true; // disable dropdown so custom input name wins
+    }
+  });
+}
+
+// Test email modal
+let _testProfileId = null;
+function openTestModal(profileId, profileName) {
+  _testProfileId = profileId;
+  document.getElementById('test-profile-name').textContent = profileName;
+  document.getElementById('test-to-email').value = '';
+  document.getElementById('test-result').style.display = 'none';
+  document.getElementById('test-modal').style.display = 'flex';
+}
+function closeTestModal() {
+  document.getElementById('test-modal').style.display = 'none';
+}
+function sendTestEmail() {
+  const toEmail = document.getElementById('test-to-email').value.trim();
+  if (!toEmail) { document.getElementById('test-to-email').focus(); return; }
+  const btn = document.getElementById('test-send-btn');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  const resultEl = document.getElementById('test-result');
+  resultEl.style.display = 'none';
+
+  const fd = new FormData();
+  fd.append('to_email', toEmail);
+  fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+  fetch(`/smtp/${_testProfileId}/test/`, { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      btn.disabled = false; btn.textContent = 'Send Test';
+      resultEl.style.display = 'block';
+      resultEl.style.background = data.ok ? 'var(--success-light)' : 'var(--danger-light)';
+      resultEl.style.color = data.ok ? 'var(--success)' : 'var(--danger)';
+      resultEl.textContent = data.msg;
+    })
+    .catch(() => {
+      btn.disabled = false; btn.textContent = 'Send Test';
+      resultEl.style.display = 'block';
+      resultEl.style.background = 'var(--danger-light)';
+      resultEl.style.color = 'var(--danger)';
+      resultEl.textContent = 'Network error — could not reach server.';
+    });
+}
+document.getElementById('test-modal')?.addEventListener('click', e => {
+  if (e.target === document.getElementById('test-modal')) closeTestModal();
+});
 </script>
 {% endblock %}

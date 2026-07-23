@@ -106,3 +106,21 @@ class SmtpGlobalSettingsTests(TestCase):
         config.refresh_from_db()
         self.assertEqual(config.global_daily_limit, 275)
         self.assertEqual(config.smtp_rotation_limit, 85)
+
+    def test_smtp_table_shows_effective_rotation_limit(self):
+        SmtpProfile.objects.create(
+            name="Gmail",
+            user="gmail@example.com",
+            password="secret",
+            daily_limit=300,
+        )
+        config = AutoConfig.get()
+        config.smtp_rotation_limit = 200
+        config.save()
+
+        response = self.client.get("/smtp/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Effective Daily Limit")
+        self.assertContains(response, "200/day")
+        self.assertContains(response, "Global rotation override")

@@ -210,7 +210,7 @@
   <div class="table-wrap">
     <table class="table">
       <thead>
-        <tr><th>#</th><th>Profile Name</th><th>Host</th><th>Port</th><th>Username</th><th>TLS</th><th>Daily Limit</th><th>Actions</th></tr>
+        <tr><th>#</th><th>Profile Name</th><th>Host</th><th>Port</th><th>Username</th><th>TLS</th><th>Effective Daily Limit</th><th>Actions</th></tr>
       </thead>
       <tbody>
         {% for p in profiles %}
@@ -222,10 +222,15 @@
           <td class="font-mono">{{ p.user }}</td>
           <td>{% if p.use_tls %}<span class="badge badge-completed">✓ TLS</span>{% else %}<span class="badge badge-paused">SSL</span>{% endif %}</td>
           <td>
-            {% if p.daily_limit %}
+            {% if global_cfg.smtp_rotation_limit %}
+              <span class="badge badge-queued">{{ global_cfg.smtp_rotation_limit }}/day</span>
+              <small class="text-muted" style="display:block; margin-top:4px;">Global rotation override</small>
+            {% elif p.daily_limit %}
               <span class="badge badge-queued">{{ p.daily_limit }}/day</span>
+              <small class="text-muted" style="display:block; margin-top:4px;">Profile limit (Auto)</small>
             {% else %}
               <span class="text-muted">Unlimited</span>
+              <small class="text-muted" style="display:block; margin-top:4px;">Profile limit (Auto)</small>
             {% endif %}
           </td>
           <td class="no-row-click">

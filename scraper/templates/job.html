@@ -50,7 +50,13 @@
   <div class="card-body">
     <div class="meta-grid">
       <div class="meta-item"><div class="meta-label">Query</div><div class="meta-value">{{ job.search_phrase }}</div></div>
+      {% if job.source == "bing_maps" %}
+      <div class="meta-item"><div class="meta-label">Source</div><div class="meta-value">bing.com/maps</div></div>
+      {% elif job.source == "maps" %}
       <div class="meta-item"><div class="meta-label">Domain</div><div class="meta-value">google.{{ job.domain }}</div></div>
+      {% else %}
+      <div class="meta-item"><div class="meta-label">Domain</div><div class="meta-value">{{ job.domain }}</div></div>
+      {% endif %}
       <div class="meta-item"><div class="meta-label">Speed</div><div class="meta-value">{{ job.get_speed_display }}</div></div>
       <div class="meta-item"><div class="meta-label">Locations</div><div class="meta-value" style="font-size:12px;">{{ job.locations }}</div></div>
       <div class="meta-item"><div class="meta-label">Collected</div><div class="meta-value" id="job-collected">{{ job.collected_listings }}<span class="text-muted" style="font-size:14px;">/{{ job.max_results }}</span></div></div>

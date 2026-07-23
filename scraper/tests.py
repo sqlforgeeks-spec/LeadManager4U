@@ -1,7 +1,10 @@
 from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
-from .models import AutoConfig, SmtpProfile
+from .models import AutoConfig, BusinessListing, ContactAttempt, EmailCampaign, EmailSend, SmtpProfile
+from .email_sender import send_campaign
+from .views import _advance_due_followups
 from .bing_maps_scraper import _extract_from_list_item
 from .search_scraper import _fetch, _is_captcha, _parse_bing_images_results, _visit_site_for_details
 
@@ -203,3 +206,124 @@ class ScraperParsingTests(TestCase):
             module._get_session = original_session
             module.time.sleep = original_sleep
         self.assertEqual(sleeps, [])
+
+
+class CampaignFollowupTests(TestCase):
+    def make_listing(self, email="lead@example.com"):
+        return BusinessListing.objects.create(
+            name="Test Lead",
+            email=email,
+            search_query="test",
+            location="Test",
+        )
+
+    def make_campaign(self, listing, name):
+        campaign = EmailCampaign.objects.create(
+            name=name,
+            subject="Hello {name}",
+            body="Hello {name}",
+            from_email="sender@example.com",
+            smtp_host="smtp.example.com",
+            smtp_port=587,
+            smtp_user="sender@example.com",
+            smtp_password="not-a-real-password",
+        )
+        EmailSend.objects.create(campaign=campaign, listing=listing)
+        return campaign
+
+    def test_creating_campaign_does_not_mark_lead_contacted(self):
+        from django.contrib.auth import get_user_model
+        user = get_user_model().objects.create_user(username="campaign-user", password="password")
+        self.client.force_login(user)
+        listing = self.make_listing()
+        response = self.client.post("/campaigns/new/", {
+            "name": "Draft campaign",
+            "subject": "Hello",
+            "body": "Hello {name}",
+            "from_email": "sender@example.com",
+            "listing_ids": str(listing.id),
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(ContactAttempt.objects.filter(listing=listing).count(), 0)
+        self.assertEqual(listing.refresh_from_db(), None)
+        self.assertEqual(listing.lead_status, "fresh")
+
+    def test_due_followups_advance_then_stop(self):
+        from datetime import date
+        listing = self.make_listing()
+        listing.lead_status = "following_up"
+        listing.follow_up_stage = 3
+        listing.follow_up_date = date(2026, 7, 23)
+        listing.save()
+
+        _advance_due_followups(date(2026, 7, 23))
+        listing.refresh_from_db()
+        self.assertEqual((listing.lead_status, listing.follow_up_stage, listing.follow_up_date), ("stopped", 4, None))
+
+    def test_non_final_due_followup_waits_for_successful_send(self):
+        from datetime import date
+        listing = self.make_listing()
+        listing.lead_status = "following_up"
+        listing.follow_up_stage = 1
+        listing.follow_up_date = date(2026, 7, 23)
+        listing.save()
+
+        _advance_due_followups(date(2026, 7, 23))
+        listing.refresh_from_db()
+        self.assertEqual((listing.lead_status, listing.follow_up_stage, listing.follow_up_date), (
+            "following_up", 1, date(2026, 7, 23)
+        ))
+
+    def test_successful_campaign_sends_advance_email_lifecycle(self):
+        from datetime import timedelta
+        from unittest.mock import patch
+        import scraper.email_sender as sender_module
+
+        class FakeSMTP:
+            def sendmail(self, *_args):
+                return {}
+
+            def quit(self):
+                return None
+
+        listing = self.make_listing()
+        with patch.object(sender_module, "_build_smtp", return_value=FakeSMTP()), \
+             patch.object(sender_module.time, "sleep", return_value=None):
+            for index, (stage, interval) in enumerate(((1, 1), (2, 7), (3, 14)), start=1):
+                campaign = self.make_campaign(listing, f"Campaign {index}")
+                sender_module.send_campaign(campaign.id)
+                listing.refresh_from_db()
+                self.assertEqual(listing.lead_status, "following_up")
+                self.assertEqual(listing.follow_up_stage, stage)
+                self.assertEqual(listing.follow_up_date, timezone.localdate() + timedelta(days=interval))
+                self.assertEqual(
+                    ContactAttempt.objects.filter(listing=listing, channel="email").count(),
+                    index,
+                )
+
+        _advance_due_followups(listing.follow_up_date)
+        listing.refresh_from_db()
+        self.assertEqual((listing.lead_status, listing.follow_up_stage, listing.follow_up_date), ("stopped", 4, None))
+
+    def test_failed_campaign_send_does_not_update_lead_lifecycle(self):
+        from unittest.mock import patch
+        import scraper.email_sender as sender_module
+
+        class FailedSMTP:
+            def sendmail(self, *_args):
+                raise sender_module.smtplib.SMTPException("simulated failure")
+
+            def quit(self):
+                return None
+
+        listing = self.make_listing("failed@example.com")
+        campaign = self.make_campaign(listing, "Failed campaign")
+        with patch.object(sender_module, "_build_smtp", return_value=FailedSMTP()), \
+             patch.object(sender_module.time, "sleep", return_value=None):
+            sender_module.send_campaign(campaign.id)
+
+        listing.refresh_from_db()
+        self.assertEqual(listing.lead_status, "fresh")
+        self.assertEqual(listing.follow_up_stage, 0)
+        self.assertIsNone(listing.follow_up_date)
+        self.assertFalse(ContactAttempt.objects.filter(listing=listing).exists())

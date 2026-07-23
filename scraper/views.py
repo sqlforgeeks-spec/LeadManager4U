@@ -62,7 +62,24 @@ def _mark_contacted_for_followup(listing, interval_days=1):
         return
     listing.lead_status = "following_up"
     listing.follow_up_date = timezone.localdate() + timedelta(days=interval_days)
-    listing.save(update_fields=["lead_status", "follow_up_date"])
+    listing.follow_up_stage = 1
+    listing.save(update_fields=["lead_status", "follow_up_date", "follow_up_stage"])
+
+
+def _advance_due_followups(today=None):
+    """Stop a lead after its final 14-day follow-up window expires."""
+    today = today or timezone.localdate()
+    due_leads = BusinessListing.objects.filter(
+        lead_status="following_up",
+        follow_up_stage=3,
+        follow_up_date__isnull=False,
+        follow_up_date__lte=today,
+    )
+    for listing in due_leads.iterator():
+        listing.lead_status = "stopped"
+        listing.follow_up_stage = 4
+        listing.follow_up_date = None
+        listing.save(update_fields=["lead_status", "follow_up_stage", "follow_up_date"])
 
 
 def _start_scheduler():
@@ -85,6 +102,7 @@ def _scheduler_loop():
         try:
             close_old_connections()
             now = timezone.now()
+            _advance_due_followups(now.date())
 
             # ── Scheduled campaigns ──────────────────────────────────────────
             ready = EmailCampaign.objects.filter(
@@ -1533,6 +1551,10 @@ def api_update_lead(request, listing_id):
             if new_status == "following_up" and not listing.follow_up_date:
                 from datetime import timedelta
                 listing.follow_up_date = date_cls.today() + timedelta(days=1)
+                listing.follow_up_stage = 1
+            elif new_status == "stopped":
+                listing.follow_up_date = None
+                listing.follow_up_stage = 4
 
     if "is_starred" in data:
         listing.is_starred = bool(data["is_starred"])
@@ -2055,15 +2077,6 @@ def new_campaign(request):
 
         for listing in qs:
             EmailSend.objects.get_or_create(campaign=campaign, listing=listing)
-
-        # Auto-log contact attempt for all recipients
-        for send in campaign.sends.select_related("listing"):
-            ContactAttempt.objects.create(
-                listing=send.listing,
-                channel="email",
-                campaign=campaign,
-                notes=f"Added to campaign: {campaign.name}",
-            )
 
         return redirect("campaign_detail", campaign_id=campaign.id)
 

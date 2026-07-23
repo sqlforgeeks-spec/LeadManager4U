@@ -394,17 +394,30 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
                 # ── Update lead lifecycle ─────────────────────────────────────
                 prior_email_contacts = ContactAttempt.objects.filter(
                     listing=listing, channel="email"
-                ).count()
+                ).exclude(notes__startswith="Added to campaign:").count()
                 ContactAttempt.objects.create(
                     listing=listing, channel="email", campaign=campaign,
                     notes=f"Sent via campaign: {campaign.name}",
                 )
                 if listing.lead_status not in ("converted", "stopped"):
                     from datetime import timedelta
-                    interval = 1 if prior_email_contacts == 0 else (7 if prior_email_contacts == 1 else 14)
-                    listing.lead_status = "following_up"
-                    listing.follow_up_date = timezone.localdate() + timedelta(days=interval)
-                    listing.save(update_fields=["lead_status", "follow_up_date"])
+                    if prior_email_contacts == 0:
+                        listing.lead_status = "following_up"
+                        listing.follow_up_date = timezone.localdate() + timedelta(days=1)
+                        listing.follow_up_stage = 1
+                    elif prior_email_contacts == 1:
+                        listing.lead_status = "following_up"
+                        listing.follow_up_date = timezone.localdate() + timedelta(days=7)
+                        listing.follow_up_stage = 2
+                    elif prior_email_contacts == 2:
+                        listing.lead_status = "following_up"
+                        listing.follow_up_date = timezone.localdate() + timedelta(days=14)
+                        listing.follow_up_stage = 3
+                    else:
+                        listing.lead_status = "stopped"
+                        listing.follow_up_date = None
+                        listing.follow_up_stage = 4
+                    listing.save(update_fields=["lead_status", "follow_up_date", "follow_up_stage"])
 
                 sent += 1
                 slot_sent += 1

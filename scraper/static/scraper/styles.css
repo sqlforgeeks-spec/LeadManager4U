@@ -110,6 +110,49 @@
 :root[data-theme="dark"] .login-card { background: #111827; }
 :root[data-theme="dark"] .login-brand { color: #F8FAFC; }
 :root[data-theme="dark"] .login-subtitle { color: #94A3B8; }
+:root[data-theme="dark"] [style*="background:#F8FAFC"],
+:root[data-theme="dark"] [style*="background:#f8fafc"],
+:root[data-theme="dark"] [style*="background: #F8FAFC"],
+:root[data-theme="dark"] [style*="background: #f8fafc"] {
+  background: #172033 !important;
+}
+:root[data-theme="dark"] [style*="background:#F1F5F9"],
+:root[data-theme="dark"] [style*="background:#f1f5f9"],
+:root[data-theme="dark"] [style*="background: #F1F5F9"],
+:root[data-theme="dark"] [style*="background: #f1f5f9"] {
+  background: #1E293B !important;
+}
+:root[data-theme="dark"] [style*="color:#1E293B"],
+:root[data-theme="dark"] [style*="color:#1e293b"],
+:root[data-theme="dark"] [style*="color: #1E293B"],
+:root[data-theme="dark"] [style*="color: #1e293b"] {
+  color: #E5E7EB !important;
+}
+:root[data-theme="dark"] .status-fresh,
+:root[data-theme="dark"] .status-pill-fresh,
+:root[data-theme="dark"] .score-low {
+  background: #263449 !important;
+  color: #CBD5E1 !important;
+}
+:root[data-theme="dark"] .status-following_up,
+:root[data-theme="dark"] .status-pill-following_up {
+  background: #172554 !important;
+  color: #93C5FD !important;
+}
+:root[data-theme="dark"] .status-converted,
+:root[data-theme="dark"] .status-pill-converted {
+  background: #052E2B !important;
+  color: #6EE7B7 !important;
+}
+:root[data-theme="dark"] .status-stopped,
+:root[data-theme="dark"] .status-pill-stopped {
+  background: #3B1118 !important;
+  color: #FCA5A5 !important;
+}
+:root[data-theme="dark"] .connect-row,
+:root[data-theme="dark"] .campaign-suggest-row {
+  border-color: #263449;
+}
 
 /* Theme control sits in the shared top bar on every authenticated page. */
 .theme-toggle {
@@ -147,6 +190,7 @@ body {
   color: var(--text);
   min-height: 100vh;
   display: flex;
+  transition: background-color .2s ease, color .2s ease;
 }
 
 /* ── Sidebar ─────────────────────────────────────────────────────────────── */

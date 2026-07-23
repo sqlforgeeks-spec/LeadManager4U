@@ -161,6 +161,10 @@ class BusinessListing(models.Model):
         null=True, blank=True,
         help_text="Next follow-up date; shown in notifications when due"
     )
+    follow_up_stage = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Follow-up cadence stage: 1 tomorrow, 2 in 7 days, 3 in 14 days, then stopped.",
+    )
     follow_up_note = models.TextField(blank=True, help_text="Internal note about this lead's status")
 
     class Meta:
@@ -308,11 +312,11 @@ class AutoConfig(models.Model):
     global_smtp_profiles = models.ManyToManyField(
         "SmtpProfile", blank=True,
         related_name="global_auto_configs",
-        help_text="Global SMTP rotation pool — used for every campaign automatically.",
+        help_text="Global SMTP rotation pool — any campaign without its own extra profiles will use these.",
     )
     smtp_rotation_limit = models.PositiveIntegerField(
         default=0,
-        help_text="Rotate to next SMTP after this many emails from one account. 0 = Auto (uses each profile's own daily limit).",
+        help_text="Rotate to next SMTP after this many emails. 0 = Auto (uses each profile's own daily limit).",
     )
 
     # Auto-scrape

@@ -9,7 +9,10 @@
     (() => {
       try {
         const saved = localStorage.getItem("lm4u_theme");
-        if (saved === "dark" || saved === "light") document.documentElement.dataset.theme = saved;
+        const initial = saved === "dark" || saved === "light"
+          ? saved
+          : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+        document.documentElement.dataset.theme = initial;
       } catch {}
     })();
   </script>

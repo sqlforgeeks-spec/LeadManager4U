@@ -94,6 +94,9 @@ STORAGES = {
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Allow Replit's preview iframe to load the app
+X_FRAME_OPTIONS = 'ALLOWALL'
+
 # SMTP defaults (overridden per campaign)
 EMAIL_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
 EMAIL_PORT = int(os.environ.get('SMTP_PORT', '587'))

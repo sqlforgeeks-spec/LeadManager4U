@@ -15,8 +15,10 @@ import smtplib
 import threading
 import time
 import logging
+import uuid
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.utils import formatdate, make_msgid
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -374,20 +376,27 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
                     subject = vary_subject(subject)
                     body = vary_body(body)
 
+                sender_email = campaign.from_email or slot_user or ""
+                sender_name  = campaign.from_name or ""
+                from_header  = f"{sender_name} <{sender_email}>" if sender_name else sender_email
+
                 msg = MIMEMultipart("alternative")
-                msg["Subject"] = subject
-                msg["From"] = (
-                    f"{campaign.from_name} <{campaign.from_email}>"
-                    if campaign.from_name else campaign.from_email
-                )
-                msg["To"] = listing.email
+                msg["Subject"]      = subject
+                msg["From"]         = from_header
+                msg["To"]           = listing.email
+                msg["Date"]         = formatdate(localtime=False)
+                msg["Message-ID"]   = make_msgid(domain=sender_email.split("@")[-1] if "@" in sender_email else "mail.local")
+                msg["MIME-Version"] = "1.0"
                 if campaign.reply_to:
                     msg["Reply-To"] = campaign.reply_to
 
+                # Plain-text part first, then HTML — clients prefer the last matching part
                 msg.attach(MIMEText(body, "plain", "utf-8"))
+                html_body = "<html><body>" + body.replace("\n", "<br>") + "</body></html>"
+                msg.attach(MIMEText(html_body, "html", "utf-8"))
 
                 slot_host, slot_port, slot_user, slot_pwd, slot_tls = smtp_slots[slot_idx]["creds"]
-                smtp.sendmail(slot_user or campaign.from_email, [listing.email], msg.as_string())
+                smtp.sendmail(sender_email or slot_user, [listing.email], msg.as_string())
 
                 send.status = "sent"
                 send.sent_at = timezone.now()
@@ -499,20 +508,39 @@ def send_test_email(profile_id, to_email, log_fn=None):
         sender_name  = profile.from_name.strip()  if profile.from_name  else ""
         from_header  = f"{sender_name} <{sender_email}>" if sender_name else sender_email
 
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = "✅ Test email from LeadManager4U"
-        msg["From"] = from_header
-        msg["To"] = to_email
-        if profile.reply_to:
-            msg["Reply-To"] = profile.reply_to
-        body = (
-            f"This is a test email sent from LeadManager4U.\n\n"
+        domain = sender_email.split("@")[-1] if "@" in sender_email else "mail.local"
+        plain_body = (
+            f"Hi,\n\n"
+            f"This is a connection test from LeadManager4U.\n\n"
             f"SMTP Profile: {profile.name}\n"
             f"Host: {profile.host}:{profile.port}\n"
             f"Sent from: {sender_email}\n\n"
-            f"If you received this, your SMTP profile is working correctly! ✅"
+            f"Your SMTP profile is working correctly.\n\n"
+            f"Best regards,\n{sender_name or sender_email}"
         )
-        msg.attach(MIMEText(body, "plain", "utf-8"))
+        html_body = f"""<html><body style="font-family:Arial,sans-serif;font-size:14px;color:#333;line-height:1.6;">
+<p>Hi,</p>
+<p>This is a connection test from <strong>LeadManager4U</strong>.</p>
+<table style="border-collapse:collapse;margin:16px 0;">
+  <tr><td style="padding:4px 12px 4px 0;color:#666;">SMTP Profile</td><td><strong>{profile.name}</strong></td></tr>
+  <tr><td style="padding:4px 12px 4px 0;color:#666;">Host</td><td>{profile.host}:{profile.port}</td></tr>
+  <tr><td style="padding:4px 12px 4px 0;color:#666;">Sent from</td><td>{sender_email}</td></tr>
+</table>
+<p>Your SMTP profile is working correctly ✅</p>
+<p>Best regards,<br>{sender_name or sender_email}</p>
+</body></html>"""
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"]      = "LeadManager4U — SMTP connection verified"
+        msg["From"]         = from_header
+        msg["To"]           = to_email
+        msg["Date"]         = formatdate(localtime=False)
+        msg["Message-ID"]   = make_msgid(domain=domain)
+        msg["MIME-Version"] = "1.0"
+        if profile.reply_to:
+            msg["Reply-To"] = profile.reply_to
+        msg.attach(MIMEText(plain_body, "plain", "utf-8"))
+        msg.attach(MIMEText(html_body,  "html",  "utf-8"))
         # Envelope sender must match the verified From address for providers like Brevo
         conn.sendmail(sender_email, [to_email], msg.as_string())
         conn.quit()

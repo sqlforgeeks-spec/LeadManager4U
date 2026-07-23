@@ -138,6 +138,62 @@ def _html_footer(unsub_url: str) -> str:
     )
 
 
+def _build_html_email(body: str, unsub_url: str, subject: str = "") -> str:
+    """
+    Build a deliverability-optimised HTML email.
+    Includes:
+    - Hidden preheader (shown in Gmail/Outlook inbox preview)
+    - Responsive max-width container
+    - Proper text-to-HTML ratio via a clean single-column layout
+    - Branded footer with one-click unsubscribe link
+    """
+    # Preheader: first ~90 chars of body, stripped of markup
+    preheader_text = body.strip().split("\n")[0][:90].replace('"', '&quot;')
+    # Invisible spacer trick hides preheader overflow in Gmail
+    spacer = "&nbsp;" * 120 + "&#847;" * 20
+
+    html_body_content = body.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>{subject}</title>
+</head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:Arial,Helvetica,sans-serif;-webkit-text-size-adjust:100%;">
+  <!-- Preheader: hidden preview text shown in inbox before email is opened -->
+  <div style="display:none;max-height:0;overflow:hidden;color:#f9fafb;font-size:1px;line-height:1px;">
+    {preheader_text}{spacer}
+  </div>
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f9fafb;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.06);">
+          <!-- Body -->
+          <tr>
+            <td style="padding:36px 40px 24px;font-size:15px;line-height:1.7;color:#1f2937;">
+              {html_body_content}
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td style="padding:20px 40px 32px;border-top:1px solid #e5e7eb;">
+              <p style="margin:0;font-size:11px;color:#9ca3af;text-align:center;line-height:1.6;">
+                You received this message as part of an outreach campaign.<br>
+                <a href="{unsub_url}" style="color:#6b7280;text-decoration:underline;">Unsubscribe</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+
+
 # ─── SMTP helpers ─────────────────────────────────────────────────────────────
 
 def _build_smtp(host, port, user, password, use_tls):
@@ -391,6 +447,9 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
                 continue
 
             try:
+                # Unpack slot creds first so slot_user is available for sender fallback
+                slot_host, slot_port, slot_user, slot_pwd, slot_tls = smtp_slots[slot_idx]["creds"]
+
                 body = _render_body(campaign.body, listing)
                 subject = _render_body(campaign.subject, listing)
 
@@ -406,30 +465,25 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
 
                 unsub_url    = _make_unsubscribe_url(listing.email)
                 plain_body   = body + _plain_footer(unsub_url)
-                html_body    = (
-                    '<html><body style="font-family:Arial,sans-serif;font-size:14px;'
-                    'color:#333;line-height:1.6;max-width:600px;margin:auto;padding:20px;">'
-                    + body.replace("\n", "<br>")
-                    + _html_footer(unsub_url)
-                    + "</body></html>"
-                )
+                html_body    = _build_html_email(body, unsub_url, subject)
 
                 msg = MIMEMultipart("alternative")
-                msg["Subject"]          = subject
-                msg["From"]             = from_header
-                msg["To"]               = listing.email
-                msg["Date"]             = formatdate(localtime=False)
-                msg["Message-ID"]       = make_msgid(domain=domain)
-                msg["MIME-Version"]     = "1.0"
-                msg["List-Unsubscribe"] = f"<{unsub_url}>, <mailto:{sender_email}?subject=unsubscribe>"
+                msg["Subject"]               = subject
+                msg["From"]                  = from_header
+                msg["To"]                    = listing.email
+                msg["Date"]                  = formatdate(localtime=False)
+                msg["Message-ID"]            = make_msgid(domain=domain)
+                msg["MIME-Version"]          = "1.0"
+                msg["List-Unsubscribe"]      = f"<{unsub_url}>, <mailto:{sender_email}?subject=unsubscribe>"
                 msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+                # Unique per-recipient ID prevents all campaign emails threading into one conversation
+                msg["X-Entity-Ref-ID"]       = make_msgid(domain=domain)
                 if campaign.reply_to:
                     msg["Reply-To"] = campaign.reply_to
 
                 msg.attach(MIMEText(plain_body, "plain", "utf-8"))
                 msg.attach(MIMEText(html_body,  "html",  "utf-8"))
 
-                slot_host, slot_port, slot_user, slot_pwd, slot_tls = smtp_slots[slot_idx]["creds"]
                 smtp.sendmail(sender_email or slot_user, [listing.email], msg.as_string())
 
                 send.status = "sent"

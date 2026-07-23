@@ -2631,23 +2631,38 @@ def api_lead_scores(request):
 
 # ─── Unsubscribe (no login required) ─────────────────────────────────────────
 
+@csrf_exempt
 def unsubscribe_view(request, token):
-    """Public one-click unsubscribe. Marks the lead as stopped."""
+    """
+    Public one-click unsubscribe. Handles both:
+    - GET  — user clicks the link in their email
+    - POST — Gmail/email client sends one-click unsubscribe (RFC 8058)
+    Must be csrf_exempt so Gmail's POST has no CSRF token.
+    """
     try:
         email = signing.loads(token, salt="unsubscribe", max_age=60 * 60 * 24 * 90)  # 90-day window
     except signing.BadSignature:
+        if request.method == "POST":
+            return HttpResponse("Invalid token", status=400)
         return render(request, "unsubscribe.html", {"success": False, "already": False})
 
     listing = BusinessListing.objects.filter(email__iexact=email).first()
     if not listing:
         # Email not in DB — still show success (don't leak info)
+        if request.method == "POST":
+            return HttpResponse("OK", status=200)
         return render(request, "unsubscribe.html", {"success": True, "email": email})
 
     if listing.lead_status == "stopped":
+        if request.method == "POST":
+            return HttpResponse("OK", status=200)
         return render(request, "unsubscribe.html", {"already": True, "email": email})
 
     listing.lead_status = "stopped"
     listing.save(update_fields=["lead_status"])
+    if request.method == "POST":
+        # RFC 8058 one-click: return 200 OK with no body
+        return HttpResponse("OK", status=200)
     return render(request, "unsubscribe.html", {"success": True, "email": email})
 
 

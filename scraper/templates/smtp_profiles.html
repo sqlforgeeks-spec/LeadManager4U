@@ -203,7 +203,7 @@
 
 <!-- Test Email Modal -->
 <div id="test-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1000; align-items:center; justify-content:center;">
-  <div class="card" style="width:400px; max-width:90vw;">
+  <div class="card" style="width:420px; max-width:92vw;">
     <div class="card-header">
       <div class="card-title">📨 Send Test Email</div>
       <button type="button" class="btn btn-ghost btn-sm" onclick="closeTestModal()">✕</button>
@@ -214,12 +214,78 @@
         <label class="form-label">Send test to (email address) *</label>
         <input type="email" id="test-to-email" class="form-input" placeholder="you@example.com" required>
       </div>
-      <div id="test-result" style="display:none; margin-top:12px; padding:10px 14px; border-radius:8px; font-size:13px;"></div>
+      <div id="test-result" style="display:none; margin-top:12px; padding:10px 14px; border-radius:8px; font-size:13px; word-break:break-word;"></div>
     </div>
     <div class="card-body" style="padding-top:0;">
       <div class="flex gap-8">
         <button type="button" class="btn btn-primary btn-sm" id="test-send-btn" onclick="sendTestEmail()">Send Test</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="closeTestModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Profile Modal -->
+<div id="edit-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1000; align-items:center; justify-content:center; overflow-y:auto; padding:20px 0;">
+  <div class="card" style="width:580px; max-width:94vw; margin:auto;">
+    <div class="card-header">
+      <div class="card-title">✏️ Edit SMTP Profile — <span id="edit-profile-label"></span></div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="closeEditModal()">✕</button>
+    </div>
+    <div class="card-body">
+      <div id="edit-result" style="display:none; margin-bottom:14px; padding:10px 14px; border-radius:8px; font-size:13px;"></div>
+      <!-- Brevo callout inside edit modal -->
+      <div id="edit-brevo-callout" style="display:none; margin-bottom:14px; padding:12px 14px; background:#EFF6FF; border:1px solid #93C5FD; border-radius:10px; font-size:12px; color:#1E3A8A; line-height:1.6;">
+        <strong>💡 Brevo password = SMTP Key (not your account password)</strong><br>
+        Go to <strong>app.brevo.com</strong> → top-right menu → <strong>SMTP &amp; API</strong> → <strong>SMTP tab</strong> → copy the <strong>Master password</strong>.<br>
+        Your username should look like <code>xxxxxx@smtp-brevo.com</code> (found on the same page).
+      </div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Profile Name *</label>
+          <input type="text" id="edit-name" class="form-input" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">SMTP Host</label>
+          <input type="text" id="edit-host" class="form-input">
+        </div>
+        <div class="form-group">
+          <label class="form-label">SMTP Port</label>
+          <input type="number" id="edit-port" class="form-input">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Username / Email *</label>
+          <input type="text" id="edit-user" class="form-input" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password / API Key <span style="font-weight:400; color:var(--text-muted); font-size:11px;" id="edit-pass-status"></span></label>
+          <input type="password" id="edit-password" class="form-input" placeholder="Leave blank to keep existing password" autocomplete="new-password">
+          <div class="form-hint" id="edit-pass-hint">Leave blank to keep the current saved password.</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Daily Send Limit</label>
+          <select id="edit-daily-limit" class="form-select">
+            <option value="0">Unlimited</option>
+            <option value="100">100 / day</option>
+            <option value="200">200 / day</option>
+            <option value="300">300 / day (Gmail free / Brevo free)</option>
+            <option value="600">600 / day</option>
+            <option value="900">900 / day</option>
+            <option value="1200">1200 / day</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-check">
+            <input type="checkbox" id="edit-tls">
+            Use TLS (STARTTLS — recommended for port 587)
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="card-body" style="padding-top:0;">
+      <div class="flex gap-8">
+        <button type="button" class="btn btn-primary btn-sm" id="edit-save-btn" onclick="saveEditProfile()">💾 Save Changes</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="closeEditModal()">Cancel</button>
       </div>
     </div>
   </div>
@@ -231,7 +297,7 @@
   <div class="table-wrap">
     <table class="table">
       <thead>
-        <tr><th>#</th><th>Profile Name</th><th>Host</th><th>Port</th><th>Username</th><th>TLS</th><th>Effective Daily Limit</th><th>Actions</th></tr>
+        <tr><th>#</th><th>Profile Name</th><th>Host</th><th>Port</th><th>Username</th><th>TLS</th><th>Effective Daily Limit</th><th>Password</th><th>Actions</th></tr>
       </thead>
       <tbody>
         {% for p in profiles %}
@@ -254,11 +320,19 @@
               <small class="text-muted" style="display:block; margin-top:4px;">Profile limit (Auto)</small>
             {% endif %}
           </td>
+          <td>
+            {% if p.password %}
+              <span class="badge badge-completed" title="Password saved">🔑 Set</span>
+            {% else %}
+              <span class="badge badge-failed" title="No password saved — edit to add one">⚠️ Missing</span>
+            {% endif %}
+          </td>
           <td class="no-row-click">
             <div class="action-group">
               <button type="button" class="btn btn-secondary btn-sm"
                 onclick="openTestModal({{ p.id }}, '{{ p.name|escapejs }}')">📨 Test</button>
-              <a href="{% url 'new_campaign' %}" class="btn btn-ghost btn-sm">Use in Campaign</a>
+              <button type="button" class="btn btn-primary btn-sm"
+                onclick="openEditModal({{ p.id }}, '{{ p.name|escapejs }}', '{{ p.host|escapejs }}', {{ p.port }}, '{{ p.user|escapejs }}', {{ p.use_tls|yesno:'true,false' }}, {{ p.daily_limit }}, {{ p.password|yesno:'true,false' }})">✏️ Edit</button>
               <form method="post" action="{% url 'delete_smtp_profile' p.id %}" onsubmit="return confirm('Delete this SMTP profile?')">
                 {% csrf_token %}
                 <button type="submit" class="btn btn-ghost btn-sm text-danger">🗑</button>
@@ -328,6 +402,85 @@
 
 {% block scripts %}
 <script>
+// ── Edit Modal ────────────────────────────────────────────────────────────
+let _editProfileId = null;
+const CSRF = '{{ csrf_token }}';
+
+function openEditModal(id, name, host, port, user, tls, limit, hasPassword) {
+  _editProfileId = id;
+  document.getElementById('edit-profile-label').textContent = name;
+  document.getElementById('edit-name').value = name;
+  document.getElementById('edit-host').value = host;
+  document.getElementById('edit-port').value = port;
+  document.getElementById('edit-user').value = user;
+  document.getElementById('edit-tls').checked = tls;
+  document.getElementById('edit-password').value = '';
+  document.getElementById('edit-pass-status').textContent = hasPassword ? '(currently saved ✓)' : '(⚠️ none saved — enter one)';
+  document.getElementById('edit-pass-hint').textContent = hasPassword
+    ? 'Leave blank to keep the current saved password.'
+    : 'No password is currently saved. Enter one to fix the connection.';
+
+  // Set daily limit select
+  const sel = document.getElementById('edit-daily-limit');
+  const opt = [...sel.options].find(o => o.value == limit);
+  sel.value = opt ? limit : '0';
+
+  // Show Brevo callout if applicable
+  document.getElementById('edit-brevo-callout').style.display =
+    host.includes('brevo') ? '' : 'none';
+
+  document.getElementById('edit-result').style.display = 'none';
+  document.getElementById('edit-modal').style.display = 'flex';
+}
+
+function closeEditModal() {
+  document.getElementById('edit-modal').style.display = 'none';
+}
+
+function saveEditProfile() {
+  const btn = document.getElementById('edit-save-btn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  const resultEl = document.getElementById('edit-result');
+  resultEl.style.display = 'none';
+
+  const fd = new FormData();
+  fd.append('csrfmiddlewaretoken', CSRF);
+  fd.append('name', document.getElementById('edit-name').value.trim());
+  fd.append('host', document.getElementById('edit-host').value.trim());
+  fd.append('port', document.getElementById('edit-port').value);
+  fd.append('user', document.getElementById('edit-user').value.trim());
+  fd.append('password', document.getElementById('edit-password').value);
+  fd.append('use_tls', document.getElementById('edit-tls').checked ? 'on' : 'off');
+  fd.append('daily_limit', document.getElementById('edit-daily-limit').value);
+
+  fetch(`/smtp/${_editProfileId}/update/`, { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      btn.disabled = false;
+      btn.textContent = '💾 Save Changes';
+      resultEl.style.display = 'block';
+      resultEl.style.background = data.ok ? 'var(--success-light)' : 'var(--danger-light)';
+      resultEl.style.color = data.ok ? 'var(--success)' : 'var(--danger)';
+      resultEl.textContent = data.ok ? '✅ ' + data.msg : '⚠️ ' + data.msg;
+      if (data.ok) {
+        setTimeout(() => { closeEditModal(); window.location.reload(); }, 800);
+      }
+    })
+    .catch(() => {
+      btn.disabled = false;
+      btn.textContent = '💾 Save Changes';
+      resultEl.style.display = 'block';
+      resultEl.style.background = 'var(--danger-light)';
+      resultEl.style.color = 'var(--danger)';
+      resultEl.textContent = 'Network error — could not save.';
+    });
+}
+
+document.getElementById('edit-modal')?.addEventListener('click', e => {
+  if (e.target === document.getElementById('edit-modal')) closeEditModal();
+});
+
 // ── Provider presets ─────────────────────────────────────────────────────
 const _presets = {
   gmail:    { host: 'smtp.gmail.com',          port: 587, tls: true,  limit: 300, nameHint: 'Gmail',    passHint: 'Use a 16-character App Password (Google Account → Security → App Passwords).' },

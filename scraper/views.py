@@ -2037,6 +2037,51 @@ def delete_email_template(request, template_id):
 
 
 @require_POST
+def update_smtp_profile(request, profile_id):
+    """AJAX: update an existing SMTP profile. Blank password = keep existing."""
+    profile = get_object_or_404(SmtpProfile, id=profile_id)
+    name = request.POST.get("name", "").strip()
+    host = request.POST.get("host", "").strip()
+    user = request.POST.get("user", "").strip()
+    password = request.POST.get("password", "").strip()
+    use_tls = request.POST.get("use_tls", "on") == "on"
+    try:
+        port = int(request.POST.get("port", "587"))
+    except ValueError:
+        port = 587
+    try:
+        daily_limit = int(request.POST.get("daily_limit", "300"))
+    except ValueError:
+        daily_limit = 300
+
+    if not name or not user:
+        return JsonResponse({"ok": False, "msg": "Name and username are required."})
+
+    profile.name = name
+    profile.host = host or profile.host
+    profile.port = port
+    profile.user = user
+    profile.use_tls = use_tls
+    profile.daily_limit = daily_limit
+    if password:  # only overwrite if a new password was supplied
+        profile.password = password
+    profile.save()
+    return JsonResponse({
+        "ok": True,
+        "msg": "Profile updated.",
+        "profile": {
+            "id": profile.id,
+            "name": profile.name,
+            "host": profile.host,
+            "port": profile.port,
+            "user": profile.user,
+            "use_tls": profile.use_tls,
+            "daily_limit": profile.daily_limit,
+        }
+    })
+
+
+@require_POST
 def delete_smtp_profile(request, profile_id):
     profile = get_object_or_404(SmtpProfile, id=profile_id)
     profile.delete()

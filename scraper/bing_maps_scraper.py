@@ -559,7 +559,7 @@ def scrape_bing_maps(
                     item_data = {
                         **basic,
                         "element": item_el,
-                        "maps_url": f"https://www.bing.com/maps?q={quote_plus(name)}",
+                        "maps_url": f"https://www.bing.com/maps/search?q={quote_plus(name)}",
                     }
                     collected_items.append(item_data)
                     new_found += 1

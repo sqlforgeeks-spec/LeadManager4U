@@ -1281,9 +1281,22 @@ def run_search_scrape(job_id, visit_pages=True):
         job.collected_listings = final_count
         job.processed_listings = final_count
         job.emails_found = emails_count
-        job.status = "completed"
-        job.save(update_fields=["collected_listings", "processed_listings", "emails_found", "status", "updated_at"])
-        _log(job, f"Search job completed. {final_count} leads, {emails_count} emails.")
+        if final_count == 0:
+            job.status = "completed_with_errors"
+            job.last_error = (
+                "Search finished but extracted no leads. "
+                "The provider may have returned a block page, no matches, "
+                "or an unsupported result format."
+            )
+            job.save(update_fields=[
+                "collected_listings", "processed_listings", "emails_found",
+                "status", "last_error", "updated_at",
+            ])
+            _log(job, f"Search completed with no leads ({job.search_type} parser/provider returned no usable results).", level="ERROR")
+        else:
+            job.status = "completed"
+            job.save(update_fields=["collected_listings", "processed_listings", "emails_found", "status", "updated_at"])
+            _log(job, f"Search job completed. {final_count} leads, {emails_count} emails.")
     except (SearchStopScrape, StopScrape):
         job.status = "completed_with_errors"
         job.last_error = "Stopped by user."

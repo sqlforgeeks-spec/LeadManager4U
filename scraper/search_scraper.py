@@ -9,8 +9,9 @@ import time
 import random
 import threading
 import logging
+import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from urllib.parse import quote_plus, urlparse, urljoin, parse_qs
+from urllib.parse import quote_plus, urlparse, urljoin, parse_qs, unquote
 
 import requests
 from bs4 import BeautifulSoup
@@ -133,10 +134,14 @@ def _fetch(url, timeout=14, extra_headers=None, retries=3):
             return resp.text
         except requests.exceptions.HTTPError as exc:
             if exc.response is not None and exc.response.status_code in (429, 503, 403):
-                wait = random.uniform(30, 60) * (attempt + 1)
-                logger.debug(f"Rate limited ({exc.response.status_code}) on {url}. Waiting {wait:.0f}s before retry {attempt+1}")
-                time.sleep(wait)
-                _reset_session()
+                if attempt < retries:
+                    wait = random.uniform(30, 60) * (attempt + 1)
+                    logger.debug(f"Rate limited ({exc.response.status_code}) on {url}. Waiting {wait:.0f}s before retry {attempt+1}")
+                    time.sleep(wait)
+                    _reset_session()
+                else:
+                    logger.debug(f"Rate limited ({exc.response.status_code}) on {url}; no retries remain.")
+                    return ""
             elif exc.response is not None and exc.response.status_code == 404:
                 return ""
             else:
@@ -227,7 +232,12 @@ def _extract_phone_from_html(html):
 
 
 def _visit_site_for_details(url, email_cache, email_cache_lock, visit_pages=True):
-    """Visit a website and extract email + phone."""
+    """Visit a website and extract email + phone within a bounded budget.
+
+    Lead enrichment is best-effort. A slow or dead website must not keep the
+    whole search job running indefinitely, so the initial page and contact
+    probes use one request each with no retry loop.
+    """
     domain = _domain_of(url)
     if not domain:
         return "", ""
@@ -237,16 +247,16 @@ def _visit_site_for_details(url, email_cache, email_cache_lock, visit_pages=True
 
     email, phone = "", ""
     if visit_pages:
-        html = _fetch(url, timeout=10)
+        html = _fetch(url, timeout=8, retries=0)
         email = _extract_email_from_html(html, url)
         phone = _extract_phone_from_html(html)
 
         # Also try /contact and /about pages if no email found
         if not email:
-            for path in ["/contact", "/contact-us", "/about", "/about-us"]:
+            for path in ["/contact", "/contact-us", "/about", "/about-us"][:2]:
                 contact_url = urljoin(url, path)
                 try:
-                    contact_html = _fetch(contact_url, timeout=7, retries=0)
+                    contact_html = _fetch(contact_url, timeout=4, retries=0)
                     if contact_html:
                         email = _extract_email_from_html(contact_html, contact_url) or email
                         phone = phone or _extract_phone_from_html(contact_html)
@@ -354,6 +364,34 @@ def _parse_google_images_results(html, max_results):
                 results.append({"name": _domain_of(url), "website": url, "snippet": ""})
             if len(results) >= max_results:
                 break
+    return results
+
+
+def _parse_bing_images_results(html, max_results):
+    """Extract source pages from Bing Images' server-rendered result cards."""
+    soup = BeautifulSoup(html, "lxml")
+    results = []
+    seen = set()
+    for card in soup.select("a.iusc"):
+        if len(results) >= max_results:
+            break
+        raw_meta = card.get("m", "")
+        try:
+            meta = json.loads(raw_meta) if raw_meta else {}
+        except (TypeError, ValueError, json.JSONDecodeError):
+            meta = {}
+
+        # purl is the page behind the image; murl is the image file itself.
+        url = _clean_url(meta.get("purl", ""))
+        if not url:
+            href = card.get("href", "")
+            query = parse_qs(urlparse(href).query)
+            url = _clean_url(unquote(query.get("purl", [""])[0]))
+        if not url or _is_skip_domain(url) or url in seen:
+            continue
+        seen.add(url)
+        title = (meta.get("t") or card.get("aria-label") or _domain_of(url)).strip()
+        results.append({"name": title[:200], "website": url, "snippet": meta.get("desc", "")})
     return results
 
 
@@ -571,7 +609,10 @@ def _fetch_bing_page(query, page, per_page=10, country="", search_type="web"):
     elif country in ("in",): mkt = "en-IN"
     elif country in ("ca",): mkt = "en-CA"
     mkt_param = f"&mkt={mkt}" if mkt else ""
-    url = f"https://www.bing.com/search?q={quote_plus(query)}&count={per_page}&first={first}{mkt_param}"
+    if search_type == "images":
+        url = f"https://www.bing.com/images/search?q={quote_plus(query)}&count={per_page}&first={first}{mkt_param}"
+    else:
+        url = f"https://www.bing.com/search?q={quote_plus(query)}&count={per_page}&first={first}{mkt_param}"
     return _fetch(url, extra_headers={"Referer": "https://www.bing.com/"})
 
 
@@ -618,6 +659,7 @@ ENGINE_CONFIG = {
     "bing": {
         "fetch": _fetch_bing_page,
         "parse_web": _parse_bing_results,
+        "parse_images": _parse_bing_images_results,
         "per_page": 10,
         "delay": (1.5, 3.5),
         "captcha_wait": (20, 40),
@@ -756,6 +798,22 @@ def scrape_search_engine(
             log(f"[{engine.upper()}] Fallback provider unavailable: {exc}")
             return []
 
+    def fallback_image_results(page):
+        """Use Bing's server-rendered Images endpoint when Google Images is
+        unavailable in the current runtime."""
+        if search_type != "images" or engine == "bing":
+            return []
+        try:
+            fallback_html = _fetch_bing_page(
+                query, page, per_page=per_page, country=country, search_type="images"
+            )
+            if _is_captcha(fallback_html):
+                return []
+            return _parse_bing_images_results(fallback_html, max_results)
+        except Exception as exc:
+            log(f"[{engine.upper()}] Image fallback unavailable: {exc}")
+            return []
+
     for page in range(max_pages):
         if check_stop():
             raise StopScrape("Stop requested")
@@ -779,9 +837,10 @@ def scrape_search_engine(
         # blocked provider; use the documented HTML fallback for web searches.
         if _is_captcha(html):
             log(f"[{engine.upper()}] Provider returned a challenge/block page.")
-            parsed = fallback_web_results(page)
+            parsed = fallback_web_results(page) if search_type == "web" else fallback_image_results(page)
             if parsed:
-                log(f"[{engine.upper()}] Using DuckDuckGo HTML fallback for this web search.")
+                provider = "DuckDuckGo HTML" if search_type == "web" else "Bing Images"
+                log(f"[{engine.upper()}] Using {provider} fallback.")
             else:
                 log(f"[{engine.upper()}] No compliant fallback results available; stopping this provider.")
                 break
@@ -791,10 +850,15 @@ def scrape_search_engine(
             # shell with HTTP 200 and no SERP containers. Treat that as
             # unavailable instead of reporting a successful zero-result job.
             if not parsed:
-                fallback = fallback_web_results(page)
+                fallback = (
+                    fallback_web_results(page)
+                    if search_type == "web"
+                    else fallback_image_results(page)
+                )
                 if fallback:
                     parsed = fallback
-                    log(f"[{engine.upper()}] No parseable results; using DuckDuckGo HTML fallback.")
+                    provider = "DuckDuckGo HTML" if search_type == "web" else "Bing Images"
+                    log(f"[{engine.upper()}] No parseable results; using {provider} fallback.")
         new_count = 0
         for item in parsed:
             url = item.get("website", "")

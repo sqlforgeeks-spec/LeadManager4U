@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 
 from .models import AutoConfig, SmtpProfile
 from .bing_maps_scraper import _extract_from_list_item
-from .search_scraper import _is_captcha
+from .search_scraper import _fetch, _is_captcha, _parse_bing_images_results, _visit_site_for_details
 
 
 class SmtpGlobalSettingsTests(TestCase):
@@ -156,3 +156,50 @@ class ScraperParsingTests(TestCase):
         self.assertEqual(result["phone"], "+91 98765 43210")
         self.assertEqual(result["address"], "Mumbai, MH")
         self.assertEqual(result["website"], "https://example.test/")
+
+    def test_bing_images_current_card_extracts_source_page(self):
+        html = """
+        <a class="iusc" m='{"purl":"https://example.test/product",
+        "murl":"https://cdn.example.test/image.jpg","t":"Example product"}'></a>
+        """
+        result = _parse_bing_images_results(html, 10)
+        self.assertEqual(result[0]["website"], "https://example.test/product")
+        self.assertEqual(result[0]["name"], "Example product")
+
+    def test_site_enrichment_uses_no_retry_budget(self):
+        import scraper.search_scraper as module
+        calls = []
+        original = module._fetch
+        try:
+            module._fetch = lambda url, **kwargs: calls.append((url, kwargs)) or ""
+            _visit_site_for_details("https://example.test", {}, __import__("threading").Lock())
+        finally:
+            module._fetch = original
+        self.assertEqual(len(calls), 3)
+        self.assertTrue(all(call[1]["retries"] == 0 for call in calls))
+
+    def test_zero_retry_rate_limit_returns_without_backoff(self):
+        import scraper.search_scraper as module
+        import requests
+
+        class FakeResponse:
+            status_code = 429
+
+            def raise_for_status(self):
+                raise requests.exceptions.HTTPError(response=self)
+
+        class FakeSession:
+            def get(self, *args, **kwargs):
+                return FakeResponse()
+
+        original_session = module._get_session
+        original_sleep = module.time.sleep
+        sleeps = []
+        try:
+            module._get_session = lambda: FakeSession()
+            module.time.sleep = lambda seconds: sleeps.append(seconds)
+            self.assertEqual(_fetch("https://example.test", timeout=1, retries=0), "")
+        finally:
+            module._get_session = original_session
+            module.time.sleep = original_sleep
+        self.assertEqual(sleeps, [])

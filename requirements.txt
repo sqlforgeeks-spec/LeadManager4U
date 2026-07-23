@@ -18,3 +18,13 @@ requests
 selenium
 webdriver-manager
 whitenoise
+beautifulsoup4
+Django
+gunicorn
+lxml
+pandas
+python-dotenv
+requests
+selenium
+webdriver-manager
+whitenoise

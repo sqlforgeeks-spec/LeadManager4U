@@ -128,29 +128,50 @@
     <button type="button" class="btn btn-ghost btn-sm" id="close-form-btn">✕</button>
   </div>
   <div class="card-body">
+    <!-- Provider quick-fill presets -->
+    <div class="form-group mb-16">
+      <div class="form-label mb-8">⚡ Quick Fill — choose your provider</div>
+      <div class="flex gap-8" style="flex-wrap:wrap;">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="fillPreset('gmail')">📧 Gmail</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="fillPreset('brevo')">💌 Brevo</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="fillPreset('outlook')">🪟 Outlook</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="fillPreset('sendgrid')">📨 SendGrid</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="fillPreset('mailgun')">🔫 Mailgun</button>
+      </div>
+    </div>
+
+    <!-- Brevo callout (hidden unless Brevo selected) -->
+    <div id="brevo-callout" style="display:none; margin-bottom:16px; padding:14px 16px; background:#EFF6FF; border:1px solid #93C5FD; border-radius:10px; font-size:13px; color:#1E3A8A; line-height:1.6;">
+      <strong>💡 Brevo SMTP Key (not your account password)</strong><br>
+      1. Log in to <strong>app.brevo.com</strong><br>
+      2. Top-right menu → <strong>SMTP &amp; API</strong><br>
+      3. Click the <strong>SMTP</strong> tab → copy your <strong>Master password / SMTP key</strong><br>
+      4. Paste it in the Password field below. Your username is your Brevo account email.
+    </div>
+
     <form method="post" action="{% url 'create_smtp_profile' %}">
       {% csrf_token %}
       <div class="form-grid">
         <div class="form-group">
           <label class="form-label">Profile Name *</label>
-          <input type="text" name="name" class="form-input" placeholder="Gmail – john@company.com" required>
+          <input type="text" name="name" id="pf-name" class="form-input" placeholder="Gmail – john@company.com" required>
         </div>
         <div class="form-group">
           <label class="form-label">SMTP Host</label>
-          <input type="text" name="host" class="form-input" value="smtp.gmail.com">
+          <input type="text" name="host" id="pf-host" class="form-input" value="smtp.gmail.com">
         </div>
         <div class="form-group">
           <label class="form-label">SMTP Port</label>
-          <input type="number" name="port" class="form-input" value="587">
+          <input type="number" name="port" id="pf-port" class="form-input" value="587">
         </div>
         <div class="form-group">
           <label class="form-label">Username / Email *</label>
-          <input type="text" name="user" class="form-input" placeholder="john@gmail.com" autocomplete="off" required>
+          <input type="text" name="user" id="pf-user" class="form-input" placeholder="john@gmail.com" autocomplete="off" required>
         </div>
         <div class="form-group">
-          <label class="form-label">Password / App Password *</label>
-          <input type="password" name="password" class="form-input" placeholder="••••••••••••" autocomplete="new-password">
-          <div class="form-hint">For Gmail: use a 16-character App Password.</div>
+          <label class="form-label">Password / API Key <span id="pf-pass-hint-inline" style="font-weight:400; color:var(--text-muted); font-size:11px;">(optional for some providers)</span></label>
+          <input type="password" name="password" id="pf-password" class="form-input" placeholder="••••••••••••" autocomplete="new-password">
+          <div class="form-hint" id="pf-pass-hint">For Gmail: use a 16-character App Password. For Brevo: use your SMTP key (see callout above).</div>
         </div>
         <div class="form-group">
           <label class="form-label">Daily Send Limit</label>
@@ -167,7 +188,7 @@
         </div>
         <div class="form-group">
           <label class="form-check">
-            <input type="checkbox" name="use_tls" value="on" checked>
+            <input type="checkbox" name="use_tls" id="pf-tls" value="on" checked>
             Use TLS (STARTTLS — recommended for port 587)
           </label>
         </div>
@@ -307,6 +328,36 @@
 
 {% block scripts %}
 <script>
+// ── Provider presets ─────────────────────────────────────────────────────
+const _presets = {
+  gmail:    { host: 'smtp.gmail.com',          port: 587, tls: true,  limit: 300, nameHint: 'Gmail',    passHint: 'Use a 16-character App Password (Google Account → Security → App Passwords).' },
+  brevo:    { host: 'smtp-relay.brevo.com',    port: 587, tls: true,  limit: 300, nameHint: 'Brevo',    passHint: 'Use your SMTP Key — see the blue callout above for step-by-step.' },
+  outlook:  { host: 'smtp.office365.com',      port: 587, tls: true,  limit: 300, nameHint: 'Outlook',  passHint: 'Use your Microsoft account password (or App Password if MFA is on).' },
+  sendgrid: { host: 'smtp.sendgrid.net',       port: 587, tls: true,  limit: 0,   nameHint: 'SendGrid', passHint: 'Username is literally "apikey". Password is your SendGrid API key.' },
+  mailgun:  { host: 'smtp.mailgun.org',        port: 587, tls: true,  limit: 0,   nameHint: 'Mailgun',  passHint: 'Use your Mailgun SMTP password from Sending → Domain settings.' },
+};
+
+function fillPreset(key) {
+  const p = _presets[key];
+  if (!p) return;
+  document.getElementById('pf-host').value = p.host;
+  document.getElementById('pf-port').value = p.port;
+  document.getElementById('pf-tls').checked = p.tls;
+  document.getElementById('pf-pass-hint').textContent = p.passHint;
+  const limitSel = document.getElementById('profile-daily-limit-sel');
+  if (limitSel) {
+    const opt = [...limitSel.options].find(o => o.value == p.limit);
+    if (opt) limitSel.value = p.limit;
+  }
+  // Suggest a name if field is blank
+  const nameEl = document.getElementById('pf-name');
+  if (!nameEl.value.trim()) nameEl.placeholder = p.nameHint + ' – your@email.com';
+  // Show / hide Brevo callout
+  document.getElementById('brevo-callout').style.display = (key === 'brevo') ? '' : 'none';
+  // Focus user field
+  document.getElementById('pf-user').focus();
+}
+
 // Add profile form toggle
 const form = document.getElementById('add-profile-form');
 const show = () => { form.style.display = ''; form.scrollIntoView({behavior:'smooth'}); };

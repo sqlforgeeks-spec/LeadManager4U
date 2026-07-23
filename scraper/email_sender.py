@@ -124,7 +124,9 @@ def _build_smtp(host, port, user, password, use_tls):
         conn.ehlo()
     else:
         conn = smtplib.SMTP_SSL(host, port, timeout=15)
-    conn.login(user, password)
+    # Only authenticate when credentials are present — some relays don't need auth
+    if user and password:
+        conn.login(user, password)
     return conn
 
 

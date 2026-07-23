@@ -7,7 +7,7 @@ class SmtpProfile(models.Model):
     host = models.CharField(max_length=255, default="smtp.gmail.com")
     port = models.PositiveIntegerField(default=587)
     user = models.CharField(max_length=255)
-    password = models.CharField(max_length=500)
+    password = models.CharField(max_length=500, blank=True, default="")
     use_tls = models.BooleanField(default=True)
     daily_limit = models.PositiveIntegerField(
         default=300,

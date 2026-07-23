@@ -1,0 +1,56 @@
+one thing u did wrong is , u added daily limit on every campaign basis, but i wanted it to be based on "https://d2cec644-567a-4978-bb44-8f5289de7359-00-s6wrlidtajeu.sisko.replit.dev/campaigns/" becasue i want to allow user to set limit here in this page for all the campaign so that user runs anything but doesnt go out of the limit for any campaign and also allow user to change the template or replace in while the campaign is going on "https://d2cec644-567a-4978-bb44-8f5289de7359-00-s6wrlidtajeu.sisko.replit.dev/campaigns/3/" and auto change the smtp like i set the limit as 600 but my one smtp allowing only 300 msg as brevo free it right? or gmail therefore i would add two smtp and it should automatic change after sending 300 from one smtp so that user dont need to manually change smtp every time. and in "https://d2cec644-567a-4978-bb44-8f5289de7359-00-s6wrlidtajeu.sisko.replit.dev/campaigns/3/" add one more feature in action section as a new button like ai feature that make a small change in subject and in msg for every new email so that gmail or any other doesnt ban accoutn for sending same email again and again i want like ai varaition feature for this
+
+7 minutes ago
+Limiting and editing campaigns
+
+Limiting and editing campaigns
+Let me understand the full picture first before touching anything.
+
+
+4 actions
+I understand all three things clearly:
+
+Global daily limit on the campaigns list page — one cap shared across ALL campaigns
+Live template editing on campaign detail — change subject/body mid-send
+AI variation — slightly vary each email's subject/body automatically to avoid spam detection
+Let me read the remaining files I need, then implement everything.
+
+
+3 actions
+Good, I have everything I need. Now implementing all three features in one big parallel batch.
+
+Plan:
+
+AutoConfig model → global_daily_limit + global_smtp_profiles M2M
+EmailCampaign model → ai_variation bool
+email_sender.py → global limit check, global SMTP pool, periodic subject/body refresh from DB, variation engine
+views.py → global settings save, update-template, toggle-ai-variation
+URLs, campaigns list template, campaign detail template
+
+4 actions
+Now creating the migration and updating email_sender, views, URLs, and both templates all in parallel.
+
+
+7 actions
+Now adding the new URLs and rewriting both templates in parallel.
+
+
+2 actions
+Now writing both templates in parallel.
+
+
+3 actions
+Let me check the logs and make sure campaign_detail passes saved_templates to the template.
+
+
+2 actions
+You've reached your daily free quota limit. It will reset at 12:00 AM UTC.
+
+
+Worked for 5 minutes
+Time worked
+5 minutes
+Work done
+17 actions
+Items read
+385 lines

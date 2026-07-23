@@ -2034,11 +2034,14 @@ def new_campaign(request):
 
 
 def campaign_detail(request, campaign_id):
+    from .models import EmailTemplate
     campaign = get_object_or_404(EmailCampaign, id=campaign_id)
     sends = campaign.sends.select_related("listing").order_by("-listing__scraped_at")[:500]
+    saved_templates = list(EmailTemplate.objects.values("id", "name", "subject", "body", "industry").order_by("-created_at"))
     return render(request, "campaign_detail.html", {
         "campaign": campaign,
         "sends": sends,
+        "saved_templates": saved_templates,
         "global_stats": _global_stats(),
         "notifications": _get_notifications(),
         "active_page": "campaigns",

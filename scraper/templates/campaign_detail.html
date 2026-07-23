@@ -114,6 +114,16 @@
         {% endif %}
       </div>
 
+      <!-- 📋 Replace / Edit Template -->
+      <div>
+        <div class="form-label mb-4">📋 Email Template</div>
+        <button type="button" class="btn btn-primary btn-sm" onclick="toggleTemplateEditor()" id="tpl-open-btn">
+          📋 Replace Template
+          {% if campaign.status == "sending" %}<span style="font-size:10px; opacity:.8; margin-left:4px;">Live</span>{% endif %}
+        </button>
+        <div class="form-hint">Change subject &amp; body{% if campaign.status == "sending" %} — applies within next 25 emails{% endif %}.</div>
+      </div>
+
       <!-- ✨ AI Variation toggle -->
       <div>
         <div class="form-label mb-4">✨ AI Email Variation</div>
@@ -137,38 +147,43 @@
       </div>
 
     </div>
-  </div>
-</div>
 
-<!-- ── Live Template Editor ───────────────────────────────────────────────── -->
-<div class="card mb-24" style="border:2px solid {% if campaign.status == 'sending' %}#10B981{% else %}var(--border){% endif %};">
-  <div class="card-header" style="cursor:pointer;" onclick="toggleTemplateEditor()">
-    <div class="card-title">
-      ✏️ Edit Email Template
-      {% if campaign.status == "sending" %}
-        <span class="badge badge-live" style="margin-left:8px; font-size:11px;">Live — changes apply to next batch</span>
-      {% endif %}
-    </div>
-    <span id="tpl-toggle-icon" style="color:var(--text-muted); font-size:18px;">▼</span>
-  </div>
-  <div id="tpl-editor-body" style="display:none;">
-    <div class="card-body">
-      <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">
-        You can update the subject and body at any time — even while the campaign is sending. Changes take effect within the next 25 emails.
+    <!-- ── Inline Template Editor (slides open inside Actions card) ──────── -->
+    <div id="tpl-editor-panel" style="display:none; margin-top:20px; border-top:1px solid var(--border); padding-top:20px;">
+      <div class="flex items-center gap-12 mb-16">
+        <div style="font-size:15px; font-weight:600;">
+          ✏️ Edit Email Template
+          {% if campaign.status == "sending" %}
+            <span class="badge badge-live" style="margin-left:8px; font-size:11px;">Live — changes apply to next batch</span>
+          {% endif %}
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="toggleTemplateEditor()" style="margin-left:auto;">✕ Close</button>
+      </div>
+
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">
+        You can replace or edit the subject and body at any time{% if campaign.status == "sending" %} — even while sending; changes take effect within the next 25 emails{% endif %}.
       </p>
 
-      <!-- Load saved template -->
+      <!-- Load a saved template -->
       {% if saved_templates %}
       <div class="form-group mb-16">
-        <label class="form-label">Load a saved template</label>
-        <select id="saved-tpl-sel" class="form-select" style="max-width:360px;" onchange="loadSavedTemplate(this)">
-          <option value="">— select to load —</option>
-          {% for t in saved_templates %}
-          <option value="{{ t.id }}" data-subject="{{ t.subject|escapejs }}" data-body="{{ t.body|escapejs }}">
-            {{ t.name }}{% if t.industry %} ({{ t.industry }}){% endif %}
-          </option>
-          {% endfor %}
-        </select>
+        <label class="form-label">🗂 Load / Replace with a Saved Template</label>
+        <div class="flex gap-8" style="align-items:center; flex-wrap:wrap;">
+          <select id="saved-tpl-sel" class="form-select" style="max-width:360px;">
+            <option value="">— select a template to load —</option>
+            {% for t in saved_templates %}
+            <option value="{{ t.id }}" data-subject="{{ t.subject|escapejs }}" data-body="{{ t.body|escapejs }}">
+              {{ t.name }}{% if t.industry %} ({{ t.industry }}){% endif %}
+            </option>
+            {% endfor %}
+          </select>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="loadSavedTemplate()">⬇ Load</button>
+        </div>
+        <div class="form-hint">Selecting a saved template fills the fields below — then click "Apply Changes" to save.</div>
+      </div>
+      {% else %}
+      <div class="form-hint mb-16" style="padding:10px 14px; background:#F8FAFC; border-radius:8px; border:1px solid var(--border);">
+        No saved templates yet. Fill in the fields below and click "Save as New Template" to create one.
       </div>
       {% endif %}
 
@@ -183,12 +198,13 @@
         <textarea id="edit-body" class="form-textarea" rows="10">{{ campaign.body }}</textarea>
         <div class="form-hint">Placeholders: {name} {email} {phone} {website} {location} {address}</div>
       </div>
-      <div class="flex gap-8 mt-16">
-        <button type="button" class="btn btn-primary btn-sm" onclick="saveTemplate()">💾 Save Changes</button>
+      <div class="flex gap-8 mt-16" style="flex-wrap:wrap;">
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveTemplate()">✅ Apply Changes</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="saveAsNewTemplate()">📁 Save as New Template</button>
         <button type="button" class="btn btn-ghost btn-sm" onclick="toggleTemplateEditor()">Cancel</button>
       </div>
     </div>
+
   </div>
 </div>
 
@@ -306,16 +322,21 @@ setTimeout(() => window.location.reload(), 8000);
 let _tplOpen = false;
 function toggleTemplateEditor() {
   _tplOpen = !_tplOpen;
-  document.getElementById('tpl-editor-body').style.display = _tplOpen ? '' : 'none';
-  document.getElementById('tpl-toggle-icon').textContent = _tplOpen ? '▲' : '▼';
+  const panel = document.getElementById('tpl-editor-panel');
+  const btn = document.getElementById('tpl-open-btn');
+  panel.style.display = _tplOpen ? '' : 'none';
+  if (btn) btn.style.background = _tplOpen ? 'var(--primary-dark, #1D4ED8)' : '';
 }
 
-function loadSavedTemplate(sel) {
+function loadSavedTemplate() {
+  const sel = document.getElementById('saved-tpl-sel');
+  if (!sel) return;
   const opt = sel.options[sel.selectedIndex];
-  if (!opt.value) return;
+  if (!opt.value) { showTplResult(false, 'Please select a template first.'); return; }
   document.getElementById('edit-subject').value = opt.dataset.subject || '';
   document.getElementById('edit-body').value = opt.dataset.body || '';
   sel.selectedIndex = 0;
+  showTplResult(true, '✅ Template loaded — review the fields and click "Apply Changes" to save.');
 }
 
 function saveTemplate() {

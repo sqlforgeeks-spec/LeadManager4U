@@ -36,10 +36,15 @@ A premium Django lead-generation platform that scrapes business data from Google
 
 ### Email Campaigns (`/campaigns/`)
 - Personalized body with `{name}`, `{email}`, `{phone}`, `{website}`, `{location}` placeholders
-- SMTP profile management (save and reuse credentials, supports Gmail)
-- Send now, schedule for later, stop, resend failed
-- Campaign progress tracking with real-time updates
+- SMTP profile management (save and reuse credentials, supports Gmail/Brevo)
+- Send now, schedule for later, stop, resend failed/all
+- Campaign progress tracking with real-time updates (auto-refresh every 8s while sending)
 - Auto-skip converted/stopped leads
+- **Global daily send limit** — one cap shared across all campaigns (set on `/campaigns/` page)
+- **SMTP rotation** — add multiple SMTP profiles; auto-switches when one hits its daily limit
+- **Live template replacement** — "📋 Replace Template" button in the Actions section lets you swap subject/body mid-send (applies within next 25 emails)
+- **Saved templates** — save templates to library and load them into any campaign instantly
+- **✨ AI Variation** — per-campaign toggle; varies subject line prefix and opening sentence each send to avoid Gmail/Brevo spam detection
 
 ### AI Features
 - **AI Email Template Generator** — detects industry, generates 3 subject + body templates

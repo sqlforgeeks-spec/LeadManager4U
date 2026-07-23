@@ -1,1 +1,2 @@
 - [Global settings forms](global-settings-forms.md) — keep persisted settings derived and validated on the server, not dependent on hidden JavaScript fields.
+- [Search provider compatibility](search-provider-compatibility.md) — distinguish HTTP success from usable results; Bing Maps requires UI submission and embedded card JSON.

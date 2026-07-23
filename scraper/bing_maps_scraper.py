@@ -14,6 +14,9 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.firefox.service import Service as FirefoxService
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, StaleElementReferenceException, NoSuchElementException
@@ -21,6 +24,8 @@ from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 import requests
 import os
+import shutil
+import json
 from pathlib import Path
 
 USER_AGENTS = [
@@ -36,6 +41,9 @@ PHONE_REGEX = re.compile(r"(\+?[\d\s().\-]{7,20})")
 
 # Result selectors to try in order (Bing Maps keeps updating their DOM)
 RESULT_SELECTORS = [
+    "div.b_split_card[role='listitem']",
+    "[role='listitem'] [data-entity]",
+    "[role='listitem'][data-type='Business']",
     "li.item",
     "li[data-task-id]",
     "li.taskItem",
@@ -71,15 +79,41 @@ class StopScrape(Exception):
 
 
 def _resolve_driver_path():
+    # Replit currently provides Firefox + geckodriver but not a Chrome
+    # executable. Prefer that pair and retain Chrome as a local-machine
+    # fallback.
+    geckodriver = shutil.which("geckodriver")
+    firefox = shutil.which("firefox")
+    if geckodriver and firefox:
+        return "firefox", geckodriver
+
     driver_path = ChromeDriverManager().install()
     if os.name == "nt" and not driver_path.lower().endswith(".exe"):
         candidate = Path(driver_path).with_name("chromedriver.exe")
         if candidate.exists():
             driver_path = str(candidate)
-    return driver_path
+    return "chrome", driver_path
 
 
 def _build_driver(driver_path, page_load_strategy="eager"):
+    if isinstance(driver_path, tuple):
+        browser, executable_path = driver_path
+    else:
+        browser, executable_path = "chrome", driver_path
+
+    if browser == "firefox":
+        options = FirefoxOptions()
+        options.add_argument("--headless")
+        options.add_argument("--width=1366")
+        options.add_argument("--height=900")
+        options.page_load_strategy = page_load_strategy
+        options.set_preference("permissions.default.desktop-notification", 2)
+        options.set_preference("permissions.default.geo", 2)
+        options.set_preference("dom.webnotifications.enabled", False)
+        options.set_preference("browser.display.use_document_fonts", 0)
+        service = FirefoxService(executable_path=executable_path, log_output=os.devnull)
+        return webdriver.Firefox(service=service, options=options)
+
     options = Options()
     options.add_argument("--headless=new")
     options.add_argument("--disable-gpu")
@@ -238,6 +272,43 @@ def _find_result_items(driver, container=None):
     return []
 
 
+def _has_business_cards(driver):
+    """Return true only after Bing has rendered populated business cards."""
+    return bool(_find_result_items(driver))
+
+
+def _submit_search(driver, query, log_fn):
+    """Submit a search through the current Bing Maps UI.
+
+    Bing Maps now renders its application shell for a URL containing `q`,
+    then waits for the search-box event before creating result cards.
+    """
+    selectors = [
+        "#searchBoxInput",
+        "input[name='searchbox']",
+        "input[role='combobox']",
+    ]
+    search_input = None
+    for selector in selectors:
+        try:
+            search_input = WebDriverWait(driver, 12).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+            )
+            if search_input:
+                break
+        except Exception:
+            continue
+    if not search_input:
+        raise RuntimeError("Bing Maps search box was not available.")
+
+    search_input.click()
+    search_input.clear()
+    search_input.send_keys(query)
+    search_input.send_keys(Keys.ENTER)
+    if log_fn:
+        log_fn(f"[BingMaps] Submitted search for '{query}'.")
+
+
 def _extract_detail_from_panel(driver, log_fn):
     """After clicking a result, extract details from the info panel."""
     name = ""
@@ -303,8 +374,28 @@ def _extract_from_list_item(item_el):
         soup = BeautifulSoup(html, 'html.parser')
 
         name = ""
+        phone = ""
+        address = ""
+        website = ""
+
+        # Current Bing Maps cards embed canonical business data in JSON.
+        entity_el = soup.select_one("[data-entity]")
+        if entity_el:
+            try:
+                payload = json.loads(entity_el.get("data-entity", "{}"))
+                entity = payload.get("entity", payload)
+                name = str(entity.get("title") or "").strip()
+                phone = str(entity.get("phone") or "").strip()
+                address = str(entity.get("address") or "").strip()
+                website = str(entity.get("website") or "").strip()
+            except (TypeError, ValueError, json.JSONDecodeError):
+                pass
+
         for sel in ["a.text-title", "div.title", "h5", "strong", "a.b_title",
-                    "div.entity-title", "span.name", "a[class*='title']"]:
+                    "div.entity-title", "span.name", "a[class*='title']",
+                    "h3.l_magTitle"]:
+            if name:
+                break
             el = soup.select_one(sel)
             if el and el.get_text(strip=True):
                 name = el.get_text(strip=True)
@@ -316,27 +407,27 @@ def _extract_from_list_item(item_el):
                     name = txt
                     break
 
-        phone = ""
         phone_el = soup.select_one("a[href^='tel:']")
-        if phone_el:
+        if phone_el and not phone:
             phone = phone_el.get("href", "").replace("tel:", "").strip()
         if not phone:
             text = soup.get_text(" ")
             phone = _extract_phone_from_text(text)
 
-        address = ""
         for sel in ["div.address", "span.address", "div.b_address", "p.address", "div[class*='address']"]:
+            if address:
+                break
             el = soup.select_one(sel)
             if el and el.get_text(strip=True):
                 address = el.get_text(strip=True)
                 break
 
-        website = ""
-        for a in soup.find_all("a", href=True):
-            href = a.get("href", "")
-            if href.startswith("http") and "bing.com" not in href and "microsoft.com" not in href:
-                website = href.split("?")[0].rstrip("/")
-                break
+        if not website:
+            for a in soup.find_all("a", href=True):
+                href = a.get("href", "")
+                if href.startswith("http") and "bing.com" not in href and "microsoft.com" not in href:
+                    website = href.split("?")[0].rstrip("/")
+                    break
 
         return {"name": name, "phone": phone, "address": address, "website": website}
     except Exception:
@@ -368,7 +459,9 @@ def scrape_bing_maps(
         email_cache_lock = EMAIL_CACHE_LOCK
 
     query = f"{search_phrase} {location}".strip() if location else search_phrase
-    url = f"https://www.bing.com/maps?q={quote_plus(query)}&setlang=en"
+    # Load the application shell first; the current UI requires a real input
+    # event before it creates result cards.
+    url = "https://www.bing.com/maps?setlang=en"
 
     def log(msg):
         if log_fn:
@@ -405,14 +498,24 @@ def scrape_bing_maps(
             except Exception:
                 pass
 
-        # Wait for results to appear
+        _submit_search(driver, query, log)
+
+        # Wait for actual business cards, not just the application shell.
         try:
             WebDriverWait(driver, 20).until(
-                lambda d: len(_find_result_items(d)) > 0
+                _has_business_cards
             )
         except TimeoutException:
-            log("[BingMaps] No results found or page failed to load.")
-            return []
+            # Some Firefox runs need one additional input event while Bing's
+            # client-side map view finishes loading. Retry once, bounded, so
+            # a slow render is not reported as a false zero-result job.
+            log("[BingMaps] Search submitted, but business cards did not render; retrying once.")
+            try:
+                _submit_search(driver, query, log)
+                WebDriverWait(driver, 12).until(_has_business_cards)
+            except TimeoutException:
+                log("[BingMaps] Search completed without business cards. Bing Maps may have returned no matches or changed its UI.")
+                return []
 
         time.sleep(random.uniform(1.0, 2.0))
 

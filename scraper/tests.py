@@ -2,6 +2,8 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 
 from .models import AutoConfig, SmtpProfile
+from .bing_maps_scraper import _extract_from_list_item
+from .search_scraper import _is_captcha
 
 
 class SmtpGlobalSettingsTests(TestCase):
@@ -124,3 +126,33 @@ class SmtpGlobalSettingsTests(TestCase):
         self.assertContains(response, "Effective Daily Limit")
         self.assertContains(response, "200/day")
         self.assertContains(response, "Global rotation override")
+
+
+class ScraperParsingTests(TestCase):
+    def test_visible_script_words_do_not_mark_search_page_as_blocked(self):
+        html = "<script>robot blocked captcha</script><main>Search results</main>"
+        self.assertFalse(_is_captcha(html))
+
+    def test_bing_maps_current_business_card_extracts_embedded_data(self):
+        card = """
+        <div role="listitem" data-type="Business">
+          <div class="b_maglistcard" data-entity='{"entity":{
+            "title":"Example Fitness",
+            "phone":"+91 98765 43210",
+            "address":"Mumbai, MH",
+            "website":"https://example.test/"
+          }}'>
+            <h3 class="l_magTitle">Example Fitness</h3>
+          </div>
+        </div>
+        """
+
+        class FakeElement:
+            def get_attribute(self, name):
+                return card
+
+        result = _extract_from_list_item(FakeElement())
+        self.assertEqual(result["name"], "Example Fitness")
+        self.assertEqual(result["phone"], "+91 98765 43210")
+        self.assertEqual(result["address"], "Mumbai, MH")
+        self.assertEqual(result["website"], "https://example.test/")

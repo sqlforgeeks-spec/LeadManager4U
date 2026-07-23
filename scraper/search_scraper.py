@@ -264,12 +264,20 @@ def _is_captcha(html):
     """Detect if response is a CAPTCHA or bot block page."""
     if not html:
         return False
-    lower = html.lower()
+    # Provider pages often contain words such as "robot" or "blocked" in
+    # JavaScript and CSS. Inspect only visible text so normal result pages are
+    # not incorrectly discarded.
+    soup = BeautifulSoup(html, "lxml")
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+    lower = soup.get_text(" ", strip=True).lower()
     markers = [
         "captcha", "unusual traffic", "access denied", "our systems have detected",
-        "robot", "are you a human", "verify you are human", "i'm not a robot",
-        "please verify", "suspicious activity", "automated queries",
-        "blocked", "too many requests",
+        "are you a human", "are you a robot", "verify you are human",
+        "i'm not a robot", "please verify", "suspicious activity",
+        "automated queries", "access blocked", "temporarily blocked",
+        "too many requests", "one last step", "solve the challenge",
+        "challenge below", "press and hold",
     ]
     return any(m in lower for m in markers)
 
@@ -727,8 +735,26 @@ def scrape_search_engine(
     serp_results = []
     seen_urls = set()
     max_pages = max(1, (max_results // per_page) + 4)
-    captcha_retries = 0
-    max_captcha_retries = 2
+
+    def fallback_web_results(page):
+        """Use a stable, server-rendered HTML provider when the selected
+        provider returns a challenge or a JavaScript-only shell.
+
+        This is a compatibility fallback, not an attempt to bypass a block:
+        the event is logged and the job continues at a conservative rate.
+        """
+        if search_type != "web" or engine == "duckduckgo":
+            return []
+        try:
+            fallback_html = _fetch_ddg_page(
+                query, page, per_page=per_page, country=country, search_type=search_type
+            )
+            if _is_captcha(fallback_html):
+                return []
+            return _parse_ddg_results(fallback_html, max_results)
+        except Exception as exc:
+            log(f"[{engine.upper()}] Fallback provider unavailable: {exc}")
+            return []
 
     for page in range(max_pages):
         if check_stop():
@@ -749,36 +775,26 @@ def scrape_search_engine(
             log(f"[{engine.upper()}] Empty response on page {page + 1}, stopping.")
             break
 
-        # CAPTCHA / bot block detection with auto-recovery
+        # Provider challenge/block detection. Do not repeatedly hammer a
+        # blocked provider; use the documented HTML fallback for web searches.
         if _is_captcha(html):
-            if captcha_retries < max_captcha_retries:
-                captcha_retries += 1
-                # Exponential backoff: longer waits on each retry
-                base_wait = cfg.get("captcha_wait", (30, 60))
-                wait_sec = random.uniform(base_wait[0], base_wait[1]) * captcha_retries
-                log(f"[{engine.upper()}] ⚠️ Bot detection on page {page + 1}. Auto-recovering — waiting {wait_sec:.0f}s (attempt {captcha_retries}/{max_captcha_retries})…")
-                time.sleep(wait_sec)
-                # Reset session to clear tracking cookies
-                _SESSION_LOCAL.session = None
-                # Retry with a fresh session
-                try:
-                    html = cfg["fetch"](query, page, per_page=per_page, country=country, search_type=search_type)
-                except Exception:
-                    html = ""
-                if not html or _is_captcha(html):
-                    if captcha_retries >= max_captcha_retries:
-                        log(f"[{engine.upper()}] Still blocked after {max_captcha_retries} auto-recovery attempts. Stopping.")
-                        break
-                    # Continue loop — will try again next iteration
-                    continue
-                else:
-                    log(f"[{engine.upper()}] ✅ Auto-recovered from bot detection. Continuing…")
-                    captcha_retries = 0  # Reset counter on success
+            log(f"[{engine.upper()}] Provider returned a challenge/block page.")
+            parsed = fallback_web_results(page)
+            if parsed:
+                log(f"[{engine.upper()}] Using DuckDuckGo HTML fallback for this web search.")
             else:
-                log(f"[{engine.upper()}] Bot detection — max retries reached. Moving on.")
+                log(f"[{engine.upper()}] No compliant fallback results available; stopping this provider.")
                 break
-
-        parsed = parse_fn(html, max_results)
+        else:
+            parsed = parse_fn(html, max_results)
+            # Google and some other providers sometimes return a JavaScript
+            # shell with HTTP 200 and no SERP containers. Treat that as
+            # unavailable instead of reporting a successful zero-result job.
+            if not parsed:
+                fallback = fallback_web_results(page)
+                if fallback:
+                    parsed = fallback
+                    log(f"[{engine.upper()}] No parseable results; using DuckDuckGo HTML fallback.")
         new_count = 0
         for item in parsed:
             url = item.get("website", "")

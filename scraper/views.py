@@ -475,6 +475,101 @@ def _get_campaign_suggestions(stats):
 
 # ─── Dashboard ───────────────────────────────────────────────────────────────
 
+def _get_pipeline_insights():
+    """AI-powered pipeline health, velocity, and action signals for the dashboard."""
+    from datetime import date, timedelta
+    from django.db.models import Count
+    today = date.today()
+    week_ago   = today - timedelta(days=7)
+    week_ago2  = today - timedelta(days=14)
+
+    total = BusinessListing.objects.count() or 1
+    converted  = BusinessListing.objects.filter(lead_status="converted").count()
+    following  = BusinessListing.objects.filter(lead_status="following_up").count()
+    stopped    = BusinessListing.objects.filter(lead_status="stopped").count()
+    fresh      = BusinessListing.objects.filter(lead_status="fresh").count()
+    overdue    = BusinessListing.objects.filter(lead_status="following_up", follow_up_date__lt=today).count()
+    starred    = BusinessListing.objects.filter(is_starred=True).count()
+
+    # Contact velocity: contacts this week vs last week
+    contacts_this_week = ContactAttempt.objects.filter(contacted_at__date__gte=week_ago).count()
+    contacts_last_week = ContactAttempt.objects.filter(
+        contacted_at__date__gte=week_ago2, contacted_at__date__lt=week_ago
+    ).count()
+    velocity_up = contacts_this_week >= contacts_last_week
+    velocity_pct = (
+        round((contacts_this_week - contacts_last_week) / max(contacts_last_week, 1) * 100)
+        if contacts_last_week else (100 if contacts_this_week else 0)
+    )
+
+    # Pipeline health score 0–100
+    conversion_rate = converted / total * 100
+    data_pct = BusinessListing.objects.exclude(email="").count() / total * 100
+    followup_pct = min(following / max(fresh + following, 1) * 100, 100)
+    health = round(
+        conversion_rate * 0.4 +
+        data_pct * 0.3 +
+        followup_pct * 0.2 +
+        min(contacts_this_week / max(total * 0.05, 1), 1) * 10
+    )
+    health = min(100, max(0, health))
+
+    # Best contact day (last 30 days)
+    from django.db.models.functions import ExtractWeekDay
+    day_counts = (
+        ContactAttempt.objects
+        .filter(contacted_at__date__gte=today - timedelta(days=30))
+        .annotate(dow=ExtractWeekDay("contacted_at"))
+        .values("dow")
+        .annotate(c=Count("id"))
+        .order_by("-c")
+    )
+    DOW = {1:"Sunday", 2:"Monday", 3:"Tuesday", 4:"Wednesday", 5:"Thursday", 6:"Friday", 7:"Saturday"}
+    best_day = DOW.get(day_counts[0]["dow"], "Any day") if day_counts else None
+
+    # AI-suggested actions
+    actions = []
+    if overdue:
+        actions.append({"icon": "⚠️", "color": "#dc2626", "bg": "#fef2f2",
+                        "text": f"{overdue} follow-up{'s' if overdue > 1 else ''} overdue — contact now",
+                        "url": "/leads/?lead_status=following_up"})
+    if starred and starred > 0:
+        actions.append({"icon": "⭐", "color": "#d97706", "bg": "#fffbeb",
+                        "text": f"{starred} starred lead{'s' if starred > 1 else ''} — prioritise these",
+                        "url": "/leads/?starred=1"})
+    no_email = BusinessListing.objects.filter(email="").count()
+    if no_email > 10:
+        actions.append({"icon": "✉️", "color": "#7c3aed", "bg": "#f5f3ff",
+                        "text": f"{no_email} leads missing email — use search scraper to find them",
+                        "url": "/search/"})
+    if fresh > 50:
+        actions.append({"icon": "🚀", "color": "#2563eb", "bg": "#eff6ff",
+                        "text": f"{fresh} fresh leads ready — launch an email campaign",
+                        "url": "/campaigns/new/"})
+    if contacts_last_week and not contacts_this_week:
+        actions.append({"icon": "📉", "color": "#64748b", "bg": "#f8fafc",
+                        "text": "No contacts logged this week — keep the momentum going",
+                        "url": "/leads/"})
+
+    return {
+        "health": health,
+        "health_label": "Excellent" if health >= 80 else "Good" if health >= 60 else "Fair" if health >= 40 else "Needs Work",
+        "health_color": "#10b981" if health >= 80 else "#f59e0b" if health >= 60 else "#ef4444",
+        "conversion_rate": round(conversion_rate, 1),
+        "contacts_this_week": contacts_this_week,
+        "contacts_last_week": contacts_last_week,
+        "velocity_up": velocity_up,
+        "velocity_pct": abs(velocity_pct),
+        "best_day": best_day,
+        "actions": actions[:4],
+        "fresh": fresh,
+        "following": following,
+        "converted": converted,
+        "stopped": stopped,
+        "total": total,
+    }
+
+
 def home(request):
     from datetime import date as _date, timedelta as _td
     stats = _global_stats()
@@ -506,6 +601,7 @@ def home(request):
         "connect_today": _get_connect_today(),
         "top_leads": _get_top_leads(),
         "campaign_suggestions": _get_campaign_suggestions(stats),
+        "pipeline_insights": _get_pipeline_insights(),
         "auto_config": auto_config,
         "auto_scrape_on": auto_config.auto_scrape_enabled,
         "auto_campaign_on": auto_config.auto_campaign_enabled,

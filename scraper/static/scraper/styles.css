@@ -1471,3 +1471,65 @@ html, body { overflow-x: hidden; }
 .pipeline-val.blue    { color: #2563eb; }
 .pipeline-val.success { color: #10b981; }
 .pipeline-val.muted   { color: #94a3b8; }
+
+/* ── AI Insights card ────────────────────────────────────────────────────── */
+.ai-insights-card { border: 1.5px solid #e0e7ff; }
+.ai-health-pill {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 99px;
+  letter-spacing: .2px;
+}
+.ai-metric-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 6px;
+  text-align: center;
+}
+.ai-metric-val {
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+.ai-metric-label {
+  font-size: 10px;
+  color: #94a3b8;
+  font-weight: 500;
+  margin-top: 2px;
+  letter-spacing: .2px;
+}
+.ai-funnel-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+.ai-funnel-label {
+  font-size: 11px;
+  color: #64748b;
+  width: 100px;
+  flex-shrink: 0;
+}
+.ai-funnel-bar-wrap {
+  flex: 1;
+  height: 7px;
+  background: #f1f5f9;
+  border-radius: 99px;
+  overflow: hidden;
+}
+.ai-funnel-bar {
+  height: 100%;
+  border-radius: 99px;
+  min-width: 3px;
+  transition: width .5s ease;
+}
+.ai-funnel-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: #374151;
+  width: 32px;
+  text-align: right;
+  flex-shrink: 0;
+}

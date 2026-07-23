@@ -156,8 +156,8 @@
                target="_blank" class="icon-mini icon-wa" title="WhatsApp" onclick="event.stopPropagation()">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
             </a>
-             <a href="tg://resolve?phone={{ item.phone|cut:' '|cut:'-'|cut:'('|cut:')'|cut:'+' }}"
-                class="icon-mini icon-tg" title="Telegram" onclick="event.stopPropagation()">
+             <a href="https://t.me/+{{ item.phone|cut:' '|cut:'-'|cut:'('|cut:')'|cut:'+' }}"
+                target="_blank" class="icon-mini icon-tg" title="Telegram" onclick="event.stopPropagation()">
                <span style="font-size:11px;">✈</span>
              </a>
             {% endif %}
@@ -520,6 +520,96 @@
             No leads yet — start scraping to build your pipeline.
           {% endif %}
         </div>
+      </div>
+    </div>
+
+    <!-- ── AI Insights ─────────────────────────────────────────── -->
+    <div class="card mb-24 ai-insights-card">
+      <div class="card-header" style="background:linear-gradient(135deg,#f5f3ff,#eff6ff);border-color:#e0e7ff;">
+        <div class="card-title" style="color:#6d28d9;">🧠 AI Pipeline Insights</div>
+        <!-- Health score pill -->
+        <div class="ai-health-pill" style="background:{{ pipeline_insights.health_color }}22;color:{{ pipeline_insights.health_color }};border:1px solid {{ pipeline_insights.health_color }}44;">
+          {{ pipeline_insights.health }}/100 · {{ pipeline_insights.health_label }}
+        </div>
+      </div>
+      <div class="card-body" style="padding:14px 16px;">
+
+        <!-- Health bar -->
+        <div style="margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+            <span style="font-size:11px;font-weight:600;color:#64748b;letter-spacing:.4px;text-transform:uppercase;">Pipeline Health</span>
+            <span style="font-size:12px;font-weight:700;color:{{ pipeline_insights.health_color }};">{{ pipeline_insights.health }}%</span>
+          </div>
+          <div style="height:8px;background:#f1f5f9;border-radius:99px;overflow:hidden;">
+            <div style="height:100%;width:{{ pipeline_insights.health }}%;background:{{ pipeline_insights.health_color }};border-radius:99px;transition:width .6s ease;"></div>
+          </div>
+        </div>
+
+        <!-- Key metrics row -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px;">
+          <div class="ai-metric-box">
+            <div class="ai-metric-val" style="color:#059669;">{{ pipeline_insights.conversion_rate }}%</div>
+            <div class="ai-metric-label">Conversion</div>
+          </div>
+          <div class="ai-metric-box">
+            <div class="ai-metric-val" style="color:{% if pipeline_insights.velocity_up %}#2563eb{% else %}#dc2626{% endif %};">
+              {% if pipeline_insights.velocity_up %}↑{% else %}↓{% endif %}{{ pipeline_insights.velocity_pct }}%
+            </div>
+            <div class="ai-metric-label">Contact Velocity</div>
+          </div>
+          <div class="ai-metric-box">
+            <div class="ai-metric-val" style="color:#7c3aed;">{{ pipeline_insights.contacts_this_week }}</div>
+            <div class="ai-metric-label">This Week</div>
+          </div>
+        </div>
+
+        {% if pipeline_insights.best_day %}
+        <div style="display:flex;align-items:center;gap:6px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 10px;margin-bottom:12px;">
+          <span style="font-size:14px;">📆</span>
+          <span style="font-size:12px;color:#166534;font-weight:500;">Best day to contact: <strong>{{ pipeline_insights.best_day }}</strong></span>
+        </div>
+        {% endif %}
+
+        <!-- Funnel mini-chart -->
+        <div style="margin-bottom:12px;">
+          <div style="font-size:11px;font-weight:600;color:#64748b;letter-spacing:.4px;text-transform:uppercase;margin-bottom:8px;">Lead Funnel</div>
+          {% with pi=pipeline_insights %}
+          <div class="ai-funnel-row" style="--w:100%;--c:#e0e7ff;--tc:#4338ca;">
+            <span class="ai-funnel-label">🆕 Fresh</span>
+            <div class="ai-funnel-bar-wrap"><div class="ai-funnel-bar" style="width:{% widthratio pi.fresh pi.total 100 %}%;background:#818cf8;"></div></div>
+            <span class="ai-funnel-count">{{ pi.fresh }}</span>
+          </div>
+          <div class="ai-funnel-row">
+            <span class="ai-funnel-label">🔄 Following Up</span>
+            <div class="ai-funnel-bar-wrap"><div class="ai-funnel-bar" style="width:{% widthratio pi.following pi.total 100 %}%;background:#f59e0b;"></div></div>
+            <span class="ai-funnel-count">{{ pi.following }}</span>
+          </div>
+          <div class="ai-funnel-row">
+            <span class="ai-funnel-label">✅ Converted</span>
+            <div class="ai-funnel-bar-wrap"><div class="ai-funnel-bar" style="width:{% widthratio pi.converted pi.total 100 %}%;background:#10b981;"></div></div>
+            <span class="ai-funnel-count">{{ pi.converted }}</span>
+          </div>
+          <div class="ai-funnel-row">
+            <span class="ai-funnel-label">🚫 Stopped</span>
+            <div class="ai-funnel-bar-wrap"><div class="ai-funnel-bar" style="width:{% widthratio pi.stopped pi.total 100 %}%;background:#94a3b8;"></div></div>
+            <span class="ai-funnel-count">{{ pi.stopped }}</span>
+          </div>
+          {% endwith %}
+        </div>
+
+        <!-- AI suggested actions -->
+        {% if pipeline_insights.actions %}
+        <div style="border-top:1px solid #f1f5f9;padding-top:12px;">
+          <div style="font-size:11px;font-weight:600;color:#64748b;letter-spacing:.4px;text-transform:uppercase;margin-bottom:8px;">🤖 Suggested Actions</div>
+          {% for action in pipeline_insights.actions %}
+          <a href="{{ action.url }}" style="display:flex;align-items:flex-start;gap:8px;background:{{ action.bg }};border-radius:7px;padding:8px 10px;margin-bottom:6px;text-decoration:none;">
+            <span style="font-size:14px;flex-shrink:0;">{{ action.icon }}</span>
+            <span style="font-size:12px;color:{{ action.color }};font-weight:500;line-height:1.4;">{{ action.text }}</span>
+          </a>
+          {% endfor %}
+        </div>
+        {% endif %}
+
       </div>
     </div>
 

@@ -9,10 +9,30 @@ class SmtpProfile(models.Model):
     user = models.CharField(max_length=255)
     password = models.CharField(max_length=500)
     use_tls = models.BooleanField(default=True)
+    daily_limit = models.PositiveIntegerField(
+        default=300,
+        help_text="Max emails this profile can send per day (e.g. 300 for Gmail free, 0 = unlimited)."
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class EmailTemplate(models.Model):
+    """Reusable saved email templates."""
+    name = models.CharField(max_length=255, help_text="Friendly label, e.g. 'Dental Outreach – Urgency'")
+    subject = models.CharField(max_length=500)
+    body = models.TextField()
+    industry = models.CharField(max_length=100, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
 
     def __str__(self):
         return self.name
@@ -223,6 +243,16 @@ class EmailCampaign(models.Model):
     )
     scheduled_at = models.DateTimeField(null=True, blank=True,
                                         help_text="If set, campaign will be sent automatically at this time.")
+    # Daily send limit (0 = no limit). Campaign pauses automatically when reached.
+    daily_limit = models.PositiveIntegerField(
+        default=0,
+        help_text="Max emails to send per day. 0 = unlimited. Campaign pauses when this is reached."
+    )
+    # Extra SMTP profiles for rotation (used when daily_limit per profile is exceeded)
+    extra_smtp_profiles = models.ManyToManyField(
+        "SmtpProfile", blank=True, related_name="campaigns",
+        help_text="Additional SMTP accounts for automatic rotation when one hits its daily limit."
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

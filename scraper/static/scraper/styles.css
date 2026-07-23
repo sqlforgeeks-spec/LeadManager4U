@@ -154,6 +154,96 @@
   border-color: #263449;
 }
 
+/* ── Dark mode: status badges (job / campaign states) ───────────────────── */
+:root[data-theme="dark"] .badge-queued,
+:root[data-theme="dark"] .badge-completed_with_errors {
+  background: #33230A;
+  color: #FDE68A;
+}
+:root[data-theme="dark"] .badge-running,
+:root[data-theme="dark"] .badge-sending {
+  background: #172554;
+  color: #93C5FD;
+}
+:root[data-theme="dark"] .badge-paused,
+:root[data-theme="dark"] .badge-draft,
+:root[data-theme="dark"] .badge-pending {
+  background: #263449;
+  color: #CBD5E1;
+}
+:root[data-theme="dark"] .badge-completed,
+:root[data-theme="dark"] .badge-sent {
+  background: #052E2B;
+  color: #6EE7B7;
+}
+:root[data-theme="dark"] .badge-failed {
+  background: #3B1118;
+  color: #FCA5A5;
+}
+:root[data-theme="dark"] .badge-live { color: #6EE7B7; }
+
+/* ── Dark mode: filter chip active states ────────────────────────────────── */
+:root[data-theme="dark"] .filter-chip.active-blue  { background: #172554; color: #93C5FD; border-color: #1D4ED8; }
+:root[data-theme="dark"] .filter-chip.active-green { background: #052E2B; color: #6EE7B7; border-color: #047857; }
+:root[data-theme="dark"] .filter-chip.active-orange{ background: #33230A; color: #FDE68A; border-color: #B45309; }
+:root[data-theme="dark"] .filter-chip.active-purple{ background: #241442; color: #C4B5FD; border-color: #7C3AED; }
+:root[data-theme="dark"] .filter-chip.active-yellow{ background: #2D1D00; color: #FCD34D; border-color: #D97706; }
+
+/* ── Dark mode: selection bar action buttons ─────────────────────────────── */
+:root[data-theme="dark"] .sel-btn-email { background: #172554; color: #93C5FD; }
+:root[data-theme="dark"] .sel-btn-gmail { background: #3B0A2A; color: #F9A8D4; }
+:root[data-theme="dark"] .sel-btn-wa    { background: #052E2B; color: #6EE7B7; }
+:root[data-theme="dark"] .sel-btn-tg    { background: #0C2340; color: #7DD3FC; }
+
+/* ── Dark mode: follow-up cell ───────────────────────────────────────────── */
+:root[data-theme="dark"] .followup-cell { color: #64748B; border-color: #263449; }
+:root[data-theme="dark"] .followup-cell:hover { border-color: #2563eb; background: #172554; color: #93C5FD; }
+:root[data-theme="dark"] .followup-cell.followup-set {
+  border-color: #1D4ED8;
+  background: #172554;
+  color: #93C5FD;
+}
+:root[data-theme="dark"] .followup-cell.followup-overdue {
+  border-color: #B91C1C;
+  background: #3B1118;
+  color: #FCA5A5;
+}
+
+/* ── Dark mode: follow-up modal status buttons ───────────────────────────── */
+:root[data-theme="dark"] .fu-status-btn {
+  border-color: #263449;
+  background: #172033;
+  color: #94A3B8;
+}
+:root[data-theme="dark"] .fu-status-btn:hover,
+:root[data-theme="dark"] .fu-status-btn.fu-active {
+  border-color: #2563eb;
+  color: #93C5FD;
+  background: #172554;
+  box-shadow: 0 0 0 2px #1D4ED8;
+}
+
+/* ── Dark mode: status dropdown option ──────────────────────────────────── */
+:root[data-theme="dark"] .status-option { color: #D1D5DB; }
+:root[data-theme="dark"] .status-option:hover { background: #172033; }
+
+/* ── Dark mode: notification item text ──────────────────────────────────── */
+:root[data-theme="dark"] .notif-item-text { color: #D1D5DB; }
+
+/* ── Dark mode: source tag for Bing Maps ────────────────────────────────── */
+:root[data-theme="dark"] .badge-bing_maps,
+:root[data-theme="dark"] .source-tag.bing-maps { background: #0C2340; color: #7DD3FC; }
+
+/* ── Dark mode: body-preview ────────────────────────────────────────────── */
+:root[data-theme="dark"] .body-preview { background: #172033; }
+
+/* ── Dark mode: AI template card ─────────────────────────────────────────── */
+:root[data-theme="dark"] .ai-template-card { background: #17122A; border-color: #4C3A75; }
+
+/* ── Dark mode: notif-dropdown base ─────────────────────────────────────── */
+:root[data-theme="dark"] .notif-dropdown { background: #111827; border-color: #263449; }
+:root[data-theme="dark"] .notif-dropdown-header { background: #172033; color: #E5E7EB; }
+
 /* Theme control sits in the shared top bar on every authenticated page. */
 .theme-toggle {
   display: inline-flex;

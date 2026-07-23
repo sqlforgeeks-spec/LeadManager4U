@@ -1500,25 +1500,26 @@ html, body { overflow-x: hidden; }
   font-weight: 600;
 }
 
-/* ── Dashboard two-column grid ───────────────────────────────────────────── */
-.dash-grid {
+/* ── Dashboard single-column layout ─────────────────────────────────────── */
+.dash-single {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  width: 100%;
+}
+
+/* ── Side-by-side pair (Top Leads + Pipeline) ───────────────────────────── */
+.dash-pair {
   display: grid;
-  grid-template-columns: 1fr minmax(0, 360px);
+  grid-template-columns: 1fr 1fr;
   gap: 20px;
   align-items: start;
   min-width: 0;
-  overflow: hidden;
 }
-@media (max-width: 1280px) {
-  .dash-grid { grid-template-columns: 1fr minmax(0, 320px); }
+@media (max-width: 800px) {
+  .dash-pair { grid-template-columns: 1fr; }
 }
-@media (max-width: 1100px) {
-  .dash-grid { grid-template-columns: 1fr minmax(0, 280px); }
-}
-@media (max-width: 900px) {
-  .dash-grid { grid-template-columns: 1fr; }
-}
-.dash-col { display: flex; flex-direction: column; min-width: 0; overflow: clip; }
 
 /* ── Connect today rows ──────────────────────────────────────────────────── */
 .connect-row {

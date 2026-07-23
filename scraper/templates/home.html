@@ -120,11 +120,8 @@
   </a>
 </div>
 
-<!-- ── Main 2-column layout ───────────────────────────────────── -->
-<div class="dash-grid">
-
-  <!-- LEFT COLUMN -->
-  <div class="dash-col">
+<!-- ── Single-column dashboard layout ───────────────────────────────────── -->
+<div class="dash-single">
 
     <!-- Who to Connect Today -->
     <div class="card mb-24">
@@ -365,11 +362,6 @@
       {% endif %}
     </div>
 
-  </div><!-- /left -->
-
-  <!-- RIGHT COLUMN -->
-  <div class="dash-col">
-
     <!-- Auto-Mode Panel -->
     <div class="card mb-24 automode-card">
       <div class="card-header">
@@ -489,79 +481,84 @@
       </form>
     </div>
 
-    <!-- Top Leads by AI Score -->
-    <div class="card mb-24">
-      <div class="card-header">
-        <div class="card-title">🏆 Top Scored Leads</div>
-        <a href="/leads/?starred=1" class="btn btn-ghost btn-sm">Starred</a>
-      </div>
-      {% if top_leads %}
-      <div>
-        {% for item in top_leads %}
-        <div class="connect-row" onclick="window.location='/leads/?q={{ item.name|urlencode }}'">
-          <div class="connect-score score-{{ item.priority }}">{{ item.score }}</div>
-          <div class="connect-info">
-            <div class="connect-name">{% if item.is_starred %}⭐ {% endif %}{{ item.name }}</div>
-            <div class="connect-meta">
-              {% if item.email %}✉ {{ item.email|truncatechars:28 }}{% endif %}
-              {% if item.phone %}  📞 {{ item.phone }}{% endif %}
-            </div>
-          </div>
-          <span class="connect-status status-{{ item.lead_status }}">{{ item.lead_status_label }}</span>
-        </div>
-        {% endfor %}
-      </div>
-      {% else %}
-      <div style="padding:16px;text-align:center;color:#94a3b8;font-size:13px;">Add more leads to see AI scores.</div>
-      {% endif %}
-    </div>
+    <!-- Top Scored Leads + Follow-Up Pipeline — side by side -->
+    <div class="dash-pair mb-24">
 
-    <!-- Follow-Up Pipeline -->
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">📋 Follow-Up Pipeline</div>
-        <a href="/leads/?lead_status=following_up" class="btn btn-ghost btn-sm">View All</a>
+      <!-- Top Leads by AI Score -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">🏆 Top Scored Leads</div>
+          <a href="/leads/?starred=1" class="btn btn-ghost btn-sm">Starred</a>
+        </div>
+        {% if top_leads %}
+        <div>
+          {% for item in top_leads %}
+          <div class="connect-row" onclick="window.location='/leads/?q={{ item.name|urlencode }}'">
+            <div class="connect-score score-{{ item.priority }}">{{ item.score }}</div>
+            <div class="connect-info">
+              <div class="connect-name">{% if item.is_starred %}⭐ {% endif %}{{ item.name }}</div>
+              <div class="connect-meta">
+                {% if item.email %}✉ {{ item.email|truncatechars:24 }}{% endif %}
+                {% if item.phone %}📞 {{ item.phone }}{% endif %}
+              </div>
+            </div>
+            <span class="connect-status status-{{ item.lead_status }}">{{ item.lead_status_label }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div style="padding:20px;text-align:center;color:#94a3b8;font-size:13px;">Add more leads to see AI scores.</div>
+        {% endif %}
       </div>
-      <div class="pipeline-bars">
-        <div class="pipeline-row">
-          <div class="pipeline-label">Due Today / Overdue</div>
-          <div class="pipeline-bar-wrap">
-            <div class="pipeline-bar bar-danger" style="width:{% widthratio global_stats.follow_up_today global_stats.total_leads|default:1 100 %}%"></div>
-          </div>
-          <div class="pipeline-val danger">{{ global_stats.follow_up_today }}</div>
+
+      <!-- Follow-Up Pipeline -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📋 Follow-Up Pipeline</div>
+          <a href="/leads/?lead_status=following_up" class="btn btn-ghost btn-sm">View All</a>
         </div>
-        <div class="pipeline-row">
-          <div class="pipeline-label">Following Up</div>
-          <div class="pipeline-bar-wrap">
-            <div class="pipeline-bar bar-blue" style="width:{% widthratio global_stats.leads_following_up global_stats.total_leads|default:1 100 %}%"></div>
+        <div class="pipeline-bars">
+          <div class="pipeline-row">
+            <div class="pipeline-label">Due Today / Overdue</div>
+            <div class="pipeline-bar-wrap">
+              <div class="pipeline-bar bar-danger" style="width:{% widthratio global_stats.follow_up_today global_stats.total_leads|default:1 100 %}%"></div>
+            </div>
+            <div class="pipeline-val danger">{{ global_stats.follow_up_today }}</div>
           </div>
-          <div class="pipeline-val blue">{{ global_stats.leads_following_up }}</div>
+          <div class="pipeline-row">
+            <div class="pipeline-label">Following Up</div>
+            <div class="pipeline-bar-wrap">
+              <div class="pipeline-bar bar-blue" style="width:{% widthratio global_stats.leads_following_up global_stats.total_leads|default:1 100 %}%"></div>
+            </div>
+            <div class="pipeline-val blue">{{ global_stats.leads_following_up }}</div>
+          </div>
+          <div class="pipeline-row">
+            <div class="pipeline-label">Converted</div>
+            <div class="pipeline-bar-wrap">
+              <div class="pipeline-bar bar-success" style="width:{% widthratio global_stats.leads_converted global_stats.total_leads|default:1 100 %}%"></div>
+            </div>
+            <div class="pipeline-val success">{{ global_stats.leads_converted }}</div>
+          </div>
+          <div class="pipeline-row">
+            <div class="pipeline-label">Stopped</div>
+            <div class="pipeline-bar-wrap">
+              <div class="pipeline-bar bar-muted" style="width:{% widthratio global_stats.leads_stopped global_stats.total_leads|default:1 100 %}%"></div>
+            </div>
+            <div class="pipeline-val muted">{{ global_stats.leads_stopped }}</div>
+          </div>
         </div>
-        <div class="pipeline-row">
-          <div class="pipeline-label">Converted</div>
-          <div class="pipeline-bar-wrap">
-            <div class="pipeline-bar bar-success" style="width:{% widthratio global_stats.leads_converted global_stats.total_leads|default:1 100 %}%"></div>
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f1f5f9;">
+          <div style="font-size:11px;color:#94a3b8;text-align:center;">
+            {% if global_stats.total_leads %}
+              Conversion rate: <strong style="color:#059669;">{% widthratio global_stats.leads_converted global_stats.total_leads 100 %}%</strong> of all leads
+            {% else %}
+              No leads yet — start scraping to build your pipeline.
+            {% endif %}
           </div>
-          <div class="pipeline-val success">{{ global_stats.leads_converted }}</div>
-        </div>
-        <div class="pipeline-row">
-          <div class="pipeline-label">Stopped</div>
-          <div class="pipeline-bar-wrap">
-            <div class="pipeline-bar bar-muted" style="width:{% widthratio global_stats.leads_stopped global_stats.total_leads|default:1 100 %}%"></div>
-          </div>
-          <div class="pipeline-val muted">{{ global_stats.leads_stopped }}</div>
         </div>
       </div>
-      <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f1f5f9;">
-        <div style="font-size:11px;color:#94a3b8;text-align:center;">
-          {% if global_stats.total_leads %}
-            Conversion rate: <strong style="color:#059669;">{% widthratio global_stats.leads_converted global_stats.total_leads 100 %}%</strong> of all leads
-          {% else %}
-            No leads yet — start scraping to build your pipeline.
-          {% endif %}
-        </div>
-      </div>
-    </div>
+
+    </div><!-- /dash-pair -->
 
     <!-- ── AI Insights ─────────────────────────────────────────── -->
     <div class="card mb-24 ai-insights-card">
@@ -653,8 +650,7 @@
       </div>
     </div>
 
-  </div><!-- /right -->
-</div><!-- /dash-grid -->
+</div><!-- /dash-single -->
 
 {% endblock %}
 

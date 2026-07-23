@@ -255,6 +255,7 @@ def _get_notifications():
             "icon": "⚠️",
             "message": f"{overdue} overdue follow-up{'s' if overdue > 1 else ''} — action needed!",
             "url": "/leads/?lead_status=following_up",
+            "key": f"overdue-{today}-{overdue}",
         })
 
     # Follow-ups due today
@@ -268,6 +269,7 @@ def _get_notifications():
             "icon": "🔔",
             "message": f"{due_today} follow-up{'s' if due_today > 1 else ''} due today!",
             "url": "/leads/?lead_status=following_up",
+            "key": f"due-today-{today}-{due_today}",
         })
 
     # Leads contacted exactly 1 day ago — suggest follow-up
@@ -280,6 +282,7 @@ def _get_notifications():
             "icon": "📬",
             "message": f"{contacted_yesterday} lead{'s' if contacted_yesterday > 1 else ''} contacted yesterday — schedule follow-up!",
             "url": "/leads/?contacted=1d",
+            "key": f"contacted-1d-{one_day_ago.date()}-{contacted_yesterday}",
         })
 
     # Leads contacted 7 days ago — weekly re-engage
@@ -292,6 +295,7 @@ def _get_notifications():
             "icon": "📅",
             "message": f"{contacted_week} lead{'s' if contacted_week > 1 else ''} contacted 7 days ago — time to re-engage!",
             "url": "/leads/?contacted=7d",
+            "key": f"contacted-7d-{seven_days_ago.date()}-{contacted_week}",
         })
 
     # Leads contacted 14 days ago — final re-engagement reminder
@@ -304,6 +308,7 @@ def _get_notifications():
             "icon": "📣",
             "message": f"{contacted_fortnight} lead{'s' if contacted_fortnight > 1 else ''} contacted 14 days ago — final follow-up window!",
             "url": "/leads/?contacted=14d",
+            "key": f"contacted-14d-{fourteen_days_ago.date()}-{contacted_fortnight}",
         })
 
     return notifs

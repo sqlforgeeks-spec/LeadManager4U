@@ -114,11 +114,11 @@
     </a>
   </nav>
 
-  <!-- Follow-up notifications -->
+  <!-- Follow-up notifications (sidebar) -->
   {% if notifications %}
-  <div style="padding:10px 12px;border-top:1px solid rgba(255,255,255,0.08);">
+  <div id="sidebar-notifs" style="padding:10px 12px;border-top:1px solid rgba(255,255,255,0.08);">
     {% for notif in notifications %}
-    <a href="{{ notif.url }}" style="display:block;margin-bottom:6px;text-decoration:none;">
+    <a href="{{ notif.url }}" data-notif-key="{{ notif.key }}" style="display:block;margin-bottom:6px;text-decoration:none;">
       <div style="background:{% if notif.type == 'warning' %}rgba(255,193,7,0.18){% else %}rgba(33,150,243,0.15){% endif %};border-left:3px solid {% if notif.type == 'warning' %}#ffc107{% else %}#42a5f5{% endif %};border-radius:6px;padding:8px 10px;">
         <div style="font-size:11px;color:{% if notif.type == 'warning' %}#ffe082{% else %}#90caf9{% endif %};font-weight:600;line-height:1.4;">
           {{ notif.icon }} {{ notif.message }}
@@ -163,7 +163,7 @@
           </div>
           {% if notifications %}
             {% for notif in notifications %}
-            <a href="{{ notif.url }}" class="notif-item notif-{{ notif.type }}" onclick="closeNotifDropdown()">
+            <a href="{{ notif.url }}" class="notif-item notif-{{ notif.type }}" data-notif-key="{{ notif.key }}" onclick="markNotifSeen('{{ notif.key }}'); closeNotifDropdown()">
               <span class="notif-item-icon">{{ notif.icon }}</span>
               <span class="notif-item-text">{{ notif.message }}</span>
             </a>
@@ -185,10 +185,73 @@
 </div>
 
 <script>
+// ── Notification seen/dismiss (localStorage) ─────────────────────────────────
+const NOTIF_SEEN_KEY = 'lm4u_seen_notifs';
+
+function _getSeenSet() {
+  try { return new Set(JSON.parse(localStorage.getItem(NOTIF_SEEN_KEY) || '[]')); }
+  catch { return new Set(); }
+}
+function _saveSeenSet(s) {
+  // Keep only entries that are still referenced on the current page (prune stale keys)
+  const allKeys = [...document.querySelectorAll('[data-notif-key]')].map(el => el.dataset.notifKey);
+  const pruned = [...s].filter(k => allKeys.includes(k));
+  try { localStorage.setItem(NOTIF_SEEN_KEY, JSON.stringify(pruned)); } catch {}
+}
+
+function markNotifSeen(key) {
+  if (!key) return;
+  const s = _getSeenSet();
+  s.add(key);
+  _saveSeenSet(s);
+}
+
+function _applySeenNotifs() {
+  const seen = _getSeenSet();
+  if (!seen.size) return;
+  let hiddenCount = 0;
+  document.querySelectorAll('[data-notif-key]').forEach(el => {
+    if (seen.has(el.dataset.notifKey)) {
+      el.style.display = 'none';
+      hiddenCount++;
+    }
+  });
+  // Update badge counts after hiding
+  _refreshNotifBadge();
+}
+
+function _refreshNotifBadge() {
+  // Count visible dropdown items
+  const visible = [...document.querySelectorAll('#notif-dropdown .notif-item[data-notif-key]')]
+    .filter(el => el.style.display !== 'none').length;
+  const badge = document.querySelector('.notif-badge');
+  const pill  = document.querySelector('.notif-count-pill');
+  if (badge)  { badge.textContent = visible; badge.style.display = visible ? '' : 'none'; }
+  if (pill)   { pill.textContent  = visible; pill.style.display  = visible ? '' : 'none'; }
+  // Hide sidebar notifs wrapper if all children hidden
+  const sidebarWrap = document.getElementById('sidebar-notifs');
+  if (sidebarWrap) {
+    const anyVisible = [...sidebarWrap.querySelectorAll('[data-notif-key]')]
+      .some(el => el.style.display !== 'none');
+    sidebarWrap.style.display = anyVisible ? '' : 'none';
+  }
+}
+
 // ── Notification bell dropdown ───────────────────────────────────────────────
 function toggleNotifDropdown() {
   const d = document.getElementById('notif-dropdown');
+  const wasHidden = !d.classList.contains('show');
   d.classList.toggle('show');
+  // When the user opens the bell, mark every visible notification as seen
+  if (wasHidden) {
+    const seen = _getSeenSet();
+    d.querySelectorAll('.notif-item[data-notif-key]').forEach(el => {
+      if (el.style.display !== 'none') seen.add(el.dataset.notifKey);
+    });
+    _saveSeenSet(seen);
+    // Give the user a moment to read before hiding
+    setTimeout(() => { _applySeenNotifs(); }, 400);
+  }
 }
 function closeNotifDropdown() {
   document.getElementById('notif-dropdown').classList.remove('show');
@@ -197,6 +260,9 @@ document.addEventListener('click', function(e) {
   const wrap = document.getElementById('notif-bell-wrap');
   if (wrap && !wrap.contains(e.target)) closeNotifDropdown();
 });
+
+// Apply on load
+_applySeenNotifs();
 
 const getCookie = (name) => {
   const v = `; ${document.cookie}`;

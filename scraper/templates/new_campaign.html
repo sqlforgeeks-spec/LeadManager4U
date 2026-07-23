@@ -204,14 +204,23 @@ if (aiBtn && aiInput) {
         const templates = data.templates || [];
         const industry = data.industry || 'default';
         if (!templates.length) { aiOut.style.display = 'none'; return; }
+        // Use data-attributes to avoid quote-collision inside onclick="..."
         aiCards.innerHTML = templates.map((t, i) => `
-          <div class="ai-template-card" onclick="loadTemplate(${JSON.stringify(t.subject)}, ${JSON.stringify(t.body)}, ${JSON.stringify(t.industry)})">
+          <div class="ai-template-card" data-subject="" data-body="" data-industry="">
             <div class="ai-tmpl-label">Template ${i+1}</div>
             <div class="ai-tmpl-subject">${escHtml(t.subject)}</div>
             <div class="ai-tmpl-preview">${escHtml(t.body.substring(0,120))}…</div>
             <div class="ai-tmpl-use">Click to use →</div>
           </div>
         `).join('');
+        // Attach data and click handlers after DOM creation to avoid attribute quoting issues
+        aiCards.querySelectorAll('.ai-template-card').forEach((el, i) => {
+          const t = templates[i];
+          el.dataset.subject  = t.subject;
+          el.dataset.body     = t.body;
+          el.dataset.industry = t.industry;
+          el.addEventListener('click', () => loadTemplate(el.dataset.subject, el.dataset.body, el.dataset.industry));
+        });
         aiOut.style.display = 'block';
       })
       .catch(() => { aiLoading.style.display = 'none'; aiBtn.disabled = false; });

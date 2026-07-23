@@ -2098,6 +2098,18 @@ def toggle_ai_variation(request, campaign_id):
     return JsonResponse({"ok": True, "ai_variation": campaign.ai_variation})
 
 
+@require_POST
+def set_send_mode(request, campaign_id):
+    """Set the send mode (burst / fast / slow) for a campaign."""
+    campaign = get_object_or_404(EmailCampaign, id=campaign_id)
+    mode = request.POST.get("send_mode", "fast")
+    if mode not in ("burst", "fast", "slow"):
+        return JsonResponse({"ok": False, "msg": "Invalid mode."}, status=400)
+    campaign.send_mode = mode
+    campaign.save(update_fields=["send_mode", "updated_at"])
+    return JsonResponse({"ok": True, "send_mode": campaign.send_mode})
+
+
 def new_campaign(request):
     jobs = ScrapeJob.objects.filter(status__in=["completed", "completed_with_errors"]).order_by("-created_at")
     smtp_profiles_qs = SmtpProfile.objects.all()
@@ -2148,6 +2160,8 @@ def new_campaign(request):
             smtp_password=smtp_password, use_tls=use_tls,
             job_filter=job_filter,
             daily_limit=0,  # global limit applies
+            ai_variation=True,
+            send_mode="fast",
         )
 
         # If specific listing IDs provided, use only those

@@ -343,7 +343,7 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
             # ── Live template refresh (every 25 sends) ────────────────────────
             if sent > 0 and sent % 25 == 0:
                 try:
-                    campaign.refresh_from_db(fields=["subject", "body", "ai_variation"])
+                    campaign.refresh_from_db(fields=["subject", "body", "ai_variation", "send_mode"])
                 except Exception:
                     pass
 
@@ -426,7 +426,14 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
                 if sent % 10 == 0:
                     log(f"Sent {sent}/{total} (SMTP: {smtp_slots[slot_idx]['label']}, slot cap used: {slot_sent})")
 
-                time.sleep(0.5)
+                # ── Send-mode delay ───────────────────────────────────────────
+                mode = getattr(campaign, "send_mode", "fast")
+                if mode == "burst":
+                    time.sleep(0.1)
+                elif mode == "slow":
+                    time.sleep(random.uniform(7, 15))
+                else:  # fast (default)
+                    time.sleep(3)
 
             except smtplib.SMTPRecipientsRefused:
                 send.status = "failed"

@@ -259,8 +259,21 @@ class EmailCampaign(models.Model):
     )
     # AI variation: slightly vary subject/body per email to avoid spam filters
     ai_variation = models.BooleanField(
-        default=False,
+        default=True,
         help_text="When enabled, subtly varies the subject line and opening line of each email to avoid spam detection."
+    )
+
+    # Send mode: controls the delay between emails
+    SEND_MODE_CHOICES = [
+        ("burst", "Burst — send all at once"),
+        ("fast", "Fast — 3 s between emails"),
+        ("slow", "Slow — 7–15 s between emails"),
+    ]
+    send_mode = models.CharField(
+        max_length=10,
+        choices=SEND_MODE_CHOICES,
+        default="fast",
+        help_text="Controls sending speed to protect your SMTP from bans.",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

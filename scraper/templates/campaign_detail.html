@@ -124,6 +124,26 @@
         <div class="form-hint mt-8">Swap subject &amp; body{% if campaign.status == "sending" %} — applies within next 25 emails{% endif %}.</div>
       </div>
 
+      <!-- Send Mode -->
+      <div style="padding:16px; background:#F8FAFC; border:1px solid var(--border); border-radius:10px;" id="send-mode-card">
+        <div class="form-label mb-8" style="font-size:12px; letter-spacing:.05em; text-transform:uppercase; color:var(--text-muted);">⚡ Send Mode</div>
+        <div class="flex gap-6" style="flex-direction:column;">
+          <button type="button" id="mode-burst" onclick="setSendMode('burst')"
+            class="btn btn-sm" style="width:100%; text-align:left; transition:.15s;">
+            🚀 Burst — all at once
+          </button>
+          <button type="button" id="mode-fast" onclick="setSendMode('fast')"
+            class="btn btn-sm" style="width:100%; text-align:left; transition:.15s;">
+            ⚡ Fast — every 3 s
+          </button>
+          <button type="button" id="mode-slow" onclick="setSendMode('slow')"
+            class="btn btn-sm" style="width:100%; text-align:left; transition:.15s;">
+            🐢 Slow — 7–15 s delay
+          </button>
+        </div>
+        <div class="form-hint mt-8" style="font-size:11px;">Slower modes reduce SMTP ban risk.</div>
+      </div>
+
       <!-- AI Variation -->
       <div style="padding:16px; border:2px solid {% if campaign.ai_variation %}#8B5CF6{% else %}var(--border){% endif %}; border-radius:10px; background:{% if campaign.ai_variation %}#F5F3FF{% else %}#F8FAFC{% endif %}; transition:.2s;" id="ai-variation-card">
         <div class="form-label mb-8" style="font-size:12px; letter-spacing:.05em; text-transform:uppercase; color:{% if campaign.ai_variation %}#7C3AED{% else %}var(--text-muted){% endif %};">✨ AI Variation</div>
@@ -378,6 +398,56 @@ function showTplResult(ok, msg) {
   el.style.color = ok ? 'var(--success)' : 'var(--danger)';
   el.textContent = msg;
   if (ok) setTimeout(() => { el.style.display = 'none'; }, 4000);
+}
+
+// ── Send Mode ─────────────────────────────────────────────────────────────
+let _sendMode = '{{ campaign.send_mode }}';
+const _modeStyles = {
+  burst: { bg: '#FEF3C7', border: '#F59E0B', color: '#92400E' },
+  fast:  { bg: '#DBEAFE', border: '#3B82F6', color: '#1E3A8A' },
+  slow:  { bg: '#D1FAE5', border: '#10B981', color: '#064E3B' },
+};
+
+function _refreshModeButtons(active) {
+  ['burst', 'fast', 'slow'].forEach(m => {
+    const btn = document.getElementById('mode-' + m);
+    if (!btn) return;
+    if (m === active) {
+      const s = _modeStyles[m];
+      btn.style.background = s.bg;
+      btn.style.borderColor = s.border;
+      btn.style.color = s.color;
+      btn.style.fontWeight = '600';
+    } else {
+      btn.style.background = '';
+      btn.style.borderColor = '';
+      btn.style.color = '';
+      btn.style.fontWeight = '';
+    }
+  });
+}
+_refreshModeButtons(_sendMode);
+
+function setSendMode(mode) {
+  const fd = new FormData();
+  fd.append('csrfmiddlewaretoken', CSRF);
+  fd.append('send_mode', mode);
+  ['burst', 'fast', 'slow'].forEach(m => {
+    const b = document.getElementById('mode-' + m);
+    if (b) b.disabled = true;
+  });
+  fetch(`/campaigns/${CAMPAIGN_ID}/set-send-mode/`, { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) { _sendMode = data.send_mode; _refreshModeButtons(_sendMode); }
+    })
+    .catch(() => {})
+    .finally(() => {
+      ['burst', 'fast', 'slow'].forEach(m => {
+        const b = document.getElementById('mode-' + m);
+        if (b) b.disabled = false;
+      });
+    });
 }
 
 // ── AI Variation toggle ───────────────────────────────────────────────────

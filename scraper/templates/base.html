@@ -5,6 +5,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}LeadManager4U{% endblock %} — LeadManager4U</title>
+  <script>
+    (() => {
+      try {
+        const saved = localStorage.getItem("lm4u_theme");
+        if (saved === "dark" || saved === "light") {
+          document.documentElement.dataset.theme = saved;
+        }
+      } catch {}
+    })();
+  </script>
   <link rel="stylesheet" href="{% static 'scraper/styles.css' %}">
   {% block head %}{% endblock %}
 </head>
@@ -131,6 +141,12 @@
     <div class="topbar-actions">
       {% block topbar_actions %}{% endblock %}
 
+      <button class="theme-toggle" id="theme-toggle" type="button"
+              onclick="toggleTheme()" aria-label="Switch to dark mode" title="Switch to dark mode">
+        <span class="theme-toggle-icon" aria-hidden="true">☾</span>
+        <span class="theme-toggle-label">Dark mode</span>
+      </button>
+
       <!-- Notification Bell -->
       <div class="notif-bell-wrap" id="notif-bell-wrap">
         <button class="notif-bell-btn" id="notif-bell-btn" onclick="toggleNotifDropdown()" title="Notifications">
@@ -243,6 +259,26 @@ const getCookie = (name) => {
   return "";
 };
 window.getCookie = getCookie;
+
+// ── Global light/dark theme ──────────────────────────────────────────────────
+function applyTheme(theme) {
+  const isDark = theme === "dark";
+  document.documentElement.dataset.theme = isDark ? "dark" : "light";
+  try { localStorage.setItem("lm4u_theme", isDark ? "dark" : "light"); } catch {}
+  const button = document.getElementById("theme-toggle");
+  if (button) {
+    button.setAttribute("aria-label", isDark ? "Switch to light mode" : "Switch to dark mode");
+    button.setAttribute("title", isDark ? "Switch to light mode" : "Switch to dark mode");
+    const icon = button.querySelector(".theme-toggle-icon");
+    const label = button.querySelector(".theme-toggle-label");
+    if (icon) icon.textContent = isDark ? "☀" : "☾";
+    if (label) label.textContent = isDark ? "Light mode" : "Dark mode";
+  }
+}
+function toggleTheme() {
+  applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+}
+applyTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
 
 // Table filter
 window.filterTable = (tableId, query) => {

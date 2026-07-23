@@ -5,9 +5,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sign in — LeadManager4U.ai</title>
+  <script>
+    (() => {
+      try {
+        const saved = localStorage.getItem("lm4u_theme");
+        if (saved === "dark" || saved === "light") document.documentElement.dataset.theme = saved;
+      } catch {}
+    })();
+  </script>
   <link rel="stylesheet" href="{% static 'scraper/styles.css' %}">
 </head>
 <body class="login-page">
+  <button class="theme-toggle login-theme-toggle" id="theme-toggle" type="button"
+          onclick="toggleTheme()" aria-label="Switch to dark mode" title="Switch to dark mode">
+    <span class="theme-toggle-icon" aria-hidden="true">☾</span>
+    <span class="theme-toggle-label">Dark mode</span>
+  </button>
   <main class="login-card">
     <div class="login-brand-mark">LM</div>
     <div class="login-brand">LeadManager4U<span>.ai</span></div>
@@ -25,5 +38,22 @@
       <button class="btn btn-primary btn-lg" type="submit">Sign in</button>
     </form>
   </main>
+  <script>
+    function applyTheme(theme) {
+      const isDark = theme === "dark";
+      document.documentElement.dataset.theme = isDark ? "dark" : "light";
+      try { localStorage.setItem("lm4u_theme", isDark ? "dark" : "light"); } catch {}
+      const button = document.getElementById("theme-toggle");
+      if (!button) return;
+      button.setAttribute("aria-label", isDark ? "Switch to light mode" : "Switch to dark mode");
+      button.setAttribute("title", isDark ? "Switch to light mode" : "Switch to dark mode");
+      button.querySelector(".theme-toggle-icon").textContent = isDark ? "☀" : "☾";
+      button.querySelector(".theme-toggle-label").textContent = isDark ? "Light mode" : "Dark mode";
+    }
+    function toggleTheme() {
+      applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+    }
+    applyTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
+  </script>
 </body>
 </html>

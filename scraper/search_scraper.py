@@ -717,7 +717,7 @@ def scrape_search_engine(
     on_email_update=None,
     email_cache=None,
     email_cache_lock=None,
-    max_email_workers=6,
+    max_email_workers=10,
 ):
     """
     Scrape a search engine for business leads.
@@ -898,7 +898,7 @@ def scrape_search_engine(
     # ── Enrich: visit each site for email + phone ──
     results = []
     results_lock = threading.Lock()
-    workers = min(max_email_workers, max(1, len(serp_results)), 8)
+    workers = min(max_email_workers, max(1, len(serp_results)), 16)
 
     def enrich(item):
         if check_stop():

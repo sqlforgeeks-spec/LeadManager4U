@@ -519,12 +519,12 @@ def scrape_bing_maps(
 
         time.sleep(random.uniform(1.0, 2.0))
 
-        # Speed settings
+        # Speed settings — more workers = faster email enrichment
         speed_cfg = {
-            "slow": {"workers": 2, "delay": (1.5, 3.0)},
-            "normal": {"workers": 4, "delay": (0.8, 1.8)},
-            "fast": {"workers": 6, "delay": (0.4, 1.0)},
-        }.get(speed, {"workers": 4, "delay": (0.8, 1.8)})
+            "slow": {"workers": 4, "delay": (1.2, 2.5)},
+            "normal": {"workers": 8, "delay": (0.6, 1.4)},
+            "fast": {"workers": 14, "delay": (0.3, 0.8)},
+        }.get(speed, {"workers": 8, "delay": (0.6, 1.4)})
 
         max_email_workers = speed_cfg["workers"] + 2
         log(f"[BingMaps] Results detected. Collecting up to {max_results} listings...")
@@ -698,7 +698,7 @@ def scrape_bing_maps(
 
             return record
 
-        workers = min(max_email_workers, len(collected_items), 8)
+        workers = min(max_email_workers, len(collected_items), 16)
         if workers > 0 and collected_items:
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 futures = {executor.submit(enrich_item, item): item for item in collected_items}

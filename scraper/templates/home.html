@@ -249,16 +249,16 @@
     </div>
     {% endif %}
 
-    <!-- Follow-up Campaign Reminders -->
-    {% if followup_campaign_reminders %}
+    <!-- Follow-up Campaign Reminders — always visible -->
     <div class="card mb-24">
       <div class="card-header">
-        <div class="card-title">🔁 Follow-up Campaign Reminders</div>
+        <div class="card-title">🔁 Campaign Follow-up Reminders</div>
         <a href="{% url 'campaigns' %}" class="btn btn-ghost btn-sm">All Campaigns</a>
       </div>
+      {% if followup_campaign_reminders %}
       <div style="padding:4px 0;">
         {% for rem in followup_campaign_reminders %}
-        <div class="fu-campaign-row">
+        <div class="fu-campaign-row {% if not rem.is_upcoming %}fu-campaign-row-active{% endif %}">
           <div class="fu-campaign-icon">{{ rem.icon }}</div>
           <div style="flex:1;min-width:0;overflow:hidden;">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
@@ -267,12 +267,27 @@
             </div>
             <div class="fu-campaign-desc">{{ rem.desc }}</div>
           </div>
-          <a href="{{ rem.action_url }}" class="btn btn-primary btn-sm" style="flex-shrink:0;white-space:nowrap;" onclick="return confirm('Send follow-up for campaign: {{ rem.campaign_name }}?')">{{ rem.action_label }}</a>
+          {% if rem.is_upcoming %}
+          <a href="{{ rem.action_url }}" class="btn btn-ghost btn-sm" style="flex-shrink:0;white-space:nowrap;">View</a>
+          {% else %}
+          <a href="{{ rem.action_url }}" class="btn btn-primary btn-sm" style="flex-shrink:0;white-space:nowrap;" onclick="return confirm('Send follow-up campaign for: {{ rem.campaign_name }}?')">{{ rem.action_label }}</a>
+          {% endif %}
         </div>
         {% endfor %}
       </div>
+      <div style="padding:10px 16px;border-top:1px solid #f1f5f9;">
+        <div style="font-size:11px;color:#94a3b8;line-height:1.5;">
+          📋 Follow-up cadence: <strong>Tomorrow → 7 days → 14 days (final)</strong>. Reminders appear automatically after each campaign send.
+        </div>
+      </div>
+      {% else %}
+      <div class="empty-state" style="padding:24px;">
+        <div class="empty-icon" style="font-size:28px;">📬</div>
+        <div class="empty-title" style="font-size:14px;">No follow-ups due</div>
+        <div class="empty-desc">Once you send a campaign, reminders will appear here at <strong>tomorrow</strong>, <strong>7 days</strong>, and <strong>14 days</strong> to keep your outreach on track.</div>
+      </div>
+      {% endif %}
     </div>
-    {% endif %}
 
     <!-- Campaign Recommendations -->
     <div class="card mb-24">

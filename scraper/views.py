@@ -495,9 +495,12 @@ def _get_followup_campaign_reminders():
     """Return follow-up campaign reminders based on the 1-day / 7-day / 14-day cadence.
 
     For each sent/stopped campaign that has at least one successful send, check
-    how long ago the last email went out. Remind the user to re-send at the
-    same cadence used for lead follow-ups: today (1 day), week (7 days), and
-    final (14 days). Converted/stopped leads are excluded by the sender itself.
+    how long ago the last email went out and remind at the standard cadence:
+      • Sent today    → Upcoming: follow up tomorrow
+      • Sent 1d ago   → Due now: 1-day follow-up
+      • Sent 6–8d ago → Due now: 7-day follow-up
+      • Sent 13–15d ago → Due now: final (14-day) follow-up
+    Converted/stopped leads are excluded by the sender itself.
     """
     from datetime import date, timedelta
     from django.db.models import Max
@@ -507,28 +510,42 @@ def _get_followup_campaign_reminders():
     # Campaigns that have actually sent at least one email
     sent_campaigns = (
         EmailCampaign.objects
-        .filter(status__in=["sent", "stopped"])
+        .filter(status__in=["sent", "stopped", "sending"])
         .annotate(last_sent=Max("sends__sent_at"))
         .exclude(last_sent=None)
         .order_by("-last_sent")
     )
 
-    for campaign in sent_campaigns[:30]:  # check at most 30 recent campaigns
+    for campaign in sent_campaigns[:40]:  # check at most 40 recent campaigns
         last_sent_date = campaign.last_sent.date() if campaign.last_sent else None
         if not last_sent_date:
             continue
         days_ago = (today - last_sent_date).days
 
-        if days_ago == 1:
+        if days_ago == 0:
+            # Campaign sent today — surface an upcoming reminder for tomorrow
+            reminders.append({
+                "icon": "📬",
+                "badge": "Upcoming",
+                "badge_class": "fu-badge-upcoming",
+                "campaign_name": campaign.name,
+                "desc": "Sent today — plan your 1-day follow-up for tomorrow.",
+                "action_label": "View",
+                "action_url": f"/campaigns/{campaign.id}/",
+                "campaign_id": campaign.id,
+                "is_upcoming": True,
+            })
+        elif days_ago == 1:
             reminders.append({
                 "icon": "🔁",
-                "badge": "Today",
+                "badge": "Due Today",
                 "badge_class": "fu-badge-today",
                 "campaign_name": campaign.name,
-                "desc": f"Sent yesterday — follow up today to stay top-of-mind.",
+                "desc": "Sent yesterday — follow up now to stay top-of-mind.",
                 "action_label": "Send Now",
                 "action_url": f"/campaigns/{campaign.id}/send/",
                 "campaign_id": campaign.id,
+                "is_upcoming": False,
             })
         elif 6 <= days_ago <= 8:
             reminders.append({
@@ -536,10 +553,11 @@ def _get_followup_campaign_reminders():
                 "badge": "7-Day",
                 "badge_class": "fu-badge-week",
                 "campaign_name": campaign.name,
-                "desc": f"Sent {days_ago} days ago — it's time for your 7-day follow-up.",
+                "desc": f"Sent {days_ago} days ago — time for your 7-day follow-up.",
                 "action_label": "Send Now",
                 "action_url": f"/campaigns/{campaign.id}/send/",
                 "campaign_id": campaign.id,
+                "is_upcoming": False,
             })
         elif 13 <= days_ago <= 15:
             reminders.append({
@@ -551,9 +569,12 @@ def _get_followup_campaign_reminders():
                 "action_label": "Send Final",
                 "action_url": f"/campaigns/{campaign.id}/send/",
                 "campaign_id": campaign.id,
+                "is_upcoming": False,
             })
 
-    return reminders[:5]
+    # Sort: due items first (not upcoming), then upcoming
+    reminders.sort(key=lambda r: (1 if r.get("is_upcoming") else 0))
+    return reminders[:6]
 
 
 # ─── Dashboard ───────────────────────────────────────────────────────────────
@@ -1340,8 +1361,8 @@ def run_search_scrape(job_id, visit_pages=True):
             except Exception:
                 pass
 
-        speed_to_workers = {"slow": 3, "normal": 6, "fast": 10}
-        max_email_workers = speed_to_workers.get(job.speed, 6)
+        speed_to_workers = {"slow": 6, "normal": 12, "fast": 18}
+        max_email_workers = speed_to_workers.get(job.speed, 12)
 
         results = scrape_search_engine(
             search_phrase=job.search_phrase,

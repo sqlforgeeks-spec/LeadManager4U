@@ -1,0 +1,52 @@
+now it is showing it "Test email sent to *******@gmail.com via test2." but didnt recvied in in gmail
+
+9 minutes ago
+Checking deliverability
+
+Checking deliverability
+Not a code issue — Brevo accepted and sent it. Check these in order:
+
+Gmail spam folder — check it right now, it's almost certainly there. Gmail aggressively filters cold SMTP sends.
+
+Sender not verified in Brevo — Brevo requires the "From" email address/domain to be a verified sender. Go to Brevo → Settings → Senders, domains & IPs → Senders and check if support@sqlforgeeks.com (or whatever from-email you used) is verified. If not, add and verify it.
+
+Domain authentication (SPF/DKIM) — if your sending domain isn't authenticated, Gmail will silently drop or spam-folder the email. Go to Brevo → Settings → Senders, domains & IPs → Domains and check if sqlforgeeks.com has SPF and DKIM set up (green checkmarks). If not, Brevo will show you the DNS records to add.
+
+Check spam first — if it's there, the connection is fully working and you just need SPF/DKIM to get it to inbox.
+
+
+Worked for 15 seconds
+i dont find it in spam
+
+5 minutes ago
+Checking sender verification
+
+Checking sender verification
+The test is sending FROM 7b35ce001@smtp-brevo.com (the SMTP login credential) — that's not a real sender address. Brevo silently drops emails where the From address isn't a verified sender in your account.
+
+Two things to fix: add a From email field to the test modal, and verify your sender in Brevo.
+
+
+2 actions
+Fixing all three in parallel — sender function, view, and test modal:
+
+
+5 actions
+Now update the JS to send the from_email field too:
+
+
+4 actions
+All done. The test modal now has a From email field — that's the key fix.
+
+When you test again:
+
+From email → enter your verified sender (e.g. support@sqlforgeeks.com — must be verified in Brevo under Senders, domains & IPs → Senders)
+Send test to → your Gmail
+If support@sqlforgeeks.com isn't verified in Brevo yet, go add it there first — that's the last missing piece. Brevo silently drops emails from unverified senders no matter how good the SMTP connection is.
+
+
+Checkpoint made
+3 minutes ago
+
+Worked for 1 minute
+i got it while creating new campaign we have these three fields "From Name John Smith Display name shown to recipients. From Email Auto-filled from profile Leave blank to use the SMTP profile's email address. Reply-To (optional)" we shoudl also add these three fields in smtp page in add profile form and also in edit form and make it work

@@ -192,6 +192,24 @@
             Use TLS (STARTTLS — recommended for port 587)
           </label>
         </div>
+        <div class="form-group full" style="border-top:1px solid var(--border); padding-top:16px; margin-top:4px;">
+          <div class="form-label mb-4" style="font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted);">Sender Identity (shown to recipients)</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">From Name</label>
+          <input type="text" name="from_name" id="pf-from-name" class="form-input" placeholder="John Smith">
+          <div class="form-hint">Display name shown to recipients.</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">From Email</label>
+          <input type="email" name="from_email" id="pf-from-email" class="form-input" placeholder="Auto-filled from Username if blank">
+          <div class="form-hint">Leave blank to use the Username/Email above.</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Reply-To <span style="font-weight:400; color:var(--text-muted);">(optional)</span></label>
+          <input type="email" name="reply_to" id="pf-reply-to" class="form-input" placeholder="replies@yourdomain.com">
+          <div class="form-hint">Where replies go. Leave blank to use From Email.</div>
+        </div>
       </div>
       <div class="flex gap-12 mt-16">
         <button type="submit" class="btn btn-primary">Save Profile</button>
@@ -280,6 +298,24 @@
             Use TLS (STARTTLS — recommended for port 587)
           </label>
         </div>
+        <div class="form-group full" style="border-top:1px solid var(--border); padding-top:16px; margin-top:4px;">
+          <div class="form-label mb-4" style="font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted);">Sender Identity (shown to recipients)</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">From Name</label>
+          <input type="text" id="edit-from-name" class="form-input" placeholder="John Smith">
+          <div class="form-hint">Display name shown to recipients.</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">From Email</label>
+          <input type="email" id="edit-from-email" class="form-input" placeholder="Auto-filled from Username if blank">
+          <div class="form-hint">Leave blank to use the Username/Email above.</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Reply-To <span style="font-weight:400; color:var(--text-muted);">(optional)</span></label>
+          <input type="email" id="edit-reply-to" class="form-input" placeholder="replies@yourdomain.com">
+          <div class="form-hint">Where replies go. Leave blank to use From Email.</div>
+        </div>
       </div>
     </div>
     <div class="card-body" style="padding-top:0;">
@@ -332,7 +368,7 @@
               <button type="button" class="btn btn-secondary btn-sm"
                 onclick="openTestModal({{ p.id }}, '{{ p.name|escapejs }}')">📨 Test</button>
               <button type="button" class="btn btn-primary btn-sm"
-                onclick="openEditModal({{ p.id }}, '{{ p.name|escapejs }}', '{{ p.host|escapejs }}', {{ p.port }}, '{{ p.user|escapejs }}', {{ p.use_tls|yesno:'true,false' }}, {{ p.daily_limit }}, {{ p.password|yesno:'true,false' }})">✏️ Edit</button>
+                onclick="openEditModal({{ p.id }}, '{{ p.name|escapejs }}', '{{ p.host|escapejs }}', {{ p.port }}, '{{ p.user|escapejs }}', {{ p.use_tls|yesno:'true,false' }}, {{ p.daily_limit }}, {{ p.password|yesno:'true,false' }}, '{{ p.from_name|escapejs }}', '{{ p.from_email|escapejs }}', '{{ p.reply_to|escapejs }}')">✏️ Edit</button>
               <form method="post" action="{% url 'delete_smtp_profile' p.id %}" onsubmit="return confirm('Delete this SMTP profile?')">
                 {% csrf_token %}
                 <button type="submit" class="btn btn-ghost btn-sm text-danger">🗑</button>
@@ -406,7 +442,7 @@
 let _editProfileId = null;
 const CSRF = '{{ csrf_token }}';
 
-function openEditModal(id, name, host, port, user, tls, limit, hasPassword) {
+function openEditModal(id, name, host, port, user, tls, limit, hasPassword, fromName, fromEmail, replyTo) {
   _editProfileId = id;
   document.getElementById('edit-profile-label').textContent = name;
   document.getElementById('edit-name').value = name;
@@ -419,6 +455,9 @@ function openEditModal(id, name, host, port, user, tls, limit, hasPassword) {
   document.getElementById('edit-pass-hint').textContent = hasPassword
     ? 'Leave blank to keep the current saved password.'
     : 'No password is currently saved. Enter one to fix the connection.';
+  document.getElementById('edit-from-name').value = fromName || '';
+  document.getElementById('edit-from-email').value = fromEmail || '';
+  document.getElementById('edit-reply-to').value = replyTo || '';
 
   // Set daily limit select
   const sel = document.getElementById('edit-daily-limit');
@@ -453,6 +492,9 @@ function saveEditProfile() {
   fd.append('password', document.getElementById('edit-password').value);
   fd.append('use_tls', document.getElementById('edit-tls').checked ? 'on' : 'off');
   fd.append('daily_limit', document.getElementById('edit-daily-limit').value);
+  fd.append('from_name', document.getElementById('edit-from-name').value.trim());
+  fd.append('from_email', document.getElementById('edit-from-email').value.trim());
+  fd.append('reply_to', document.getElementById('edit-reply-to').value.trim());
 
   fetch(`/smtp/${_editProfileId}/update/`, { method: 'POST', body: fd })
     .then(r => r.json())

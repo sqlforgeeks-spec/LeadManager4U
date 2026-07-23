@@ -13,6 +13,9 @@ class SmtpProfile(models.Model):
         default=300,
         help_text="Max emails this profile can send per day (e.g. 300 for Gmail free, 0 = unlimited)."
     )
+    from_name = models.CharField(max_length=255, blank=True, default="", help_text="Display name shown to recipients, e.g. John Smith")
+    from_email = models.EmailField(blank=True, default="", help_text="From address shown to recipients. Leave blank to use Username/Email.")
+    reply_to = models.EmailField(blank=True, default="", help_text="Reply-To address (optional). Leave blank to use From email.")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

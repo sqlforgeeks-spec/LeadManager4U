@@ -1974,6 +1974,9 @@ def create_smtp_profile(request):
     user = request.POST.get("user", "").strip()
     password = request.POST.get("password", "").strip()
     use_tls = request.POST.get("use_tls", "on") == "on"
+    from_name = request.POST.get("from_name", "").strip()
+    from_email = request.POST.get("from_email", "").strip()
+    reply_to = request.POST.get("reply_to", "").strip()
     try:
         port = int(request.POST.get("port", "587"))
     except ValueError:
@@ -1986,6 +1989,7 @@ def create_smtp_profile(request):
         SmtpProfile.objects.create(
             name=name, host=host, port=port, user=user,
             password=password, use_tls=use_tls, daily_limit=daily_limit,
+            from_name=from_name, from_email=from_email, reply_to=reply_to,
         )
     return redirect("smtp_profiles")
 
@@ -2045,6 +2049,9 @@ def update_smtp_profile(request, profile_id):
     user = request.POST.get("user", "").strip()
     password = request.POST.get("password", "").strip()
     use_tls = request.POST.get("use_tls", "on") == "on"
+    from_name = request.POST.get("from_name", "").strip()
+    from_email = request.POST.get("from_email", "").strip()
+    reply_to = request.POST.get("reply_to", "").strip()
     try:
         port = int(request.POST.get("port", "587"))
     except ValueError:
@@ -2063,6 +2070,9 @@ def update_smtp_profile(request, profile_id):
     profile.user = user
     profile.use_tls = use_tls
     profile.daily_limit = daily_limit
+    profile.from_name = from_name
+    profile.from_email = from_email
+    profile.reply_to = reply_to
     if password:  # only overwrite if a new password was supplied
         profile.password = password
     profile.save()
@@ -2077,6 +2087,9 @@ def update_smtp_profile(request, profile_id):
             "user": profile.user,
             "use_tls": profile.use_tls,
             "daily_limit": profile.daily_limit,
+            "from_name": profile.from_name,
+            "from_email": profile.from_email,
+            "reply_to": profile.reply_to,
         }
     })
 
@@ -2095,6 +2108,9 @@ def api_smtp_profile(request, profile_id):
         "port": profile.port,
         "user": profile.user,
         "use_tls": profile.use_tls,
+        "from_name": profile.from_name,
+        "from_email": profile.from_email,
+        "reply_to": profile.reply_to,
     })
 
 

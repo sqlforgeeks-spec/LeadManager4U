@@ -34,3 +34,8 @@ outputType = "webview"
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--access-logfile", "-", "maps_scraper.wsgi:application"]
+build = ["python", "manage.py", "collectstatic", "--noinput"]

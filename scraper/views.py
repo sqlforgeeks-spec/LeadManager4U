@@ -1784,6 +1784,8 @@ def smtp_profiles(request):
         except Exception:
             pass
         global_cfg.save(update_fields=["global_daily_limit", "smtp_rotation_limit", "updated_at"])
+        from django.contrib import messages
+        messages.success(request, "Global settings saved successfully.")
         return redirect("smtp_profiles")
 
     from django.utils import timezone as tz

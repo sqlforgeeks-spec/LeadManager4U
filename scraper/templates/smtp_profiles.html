@@ -11,8 +11,16 @@
 {% block content %}
 
 <!-- ── Global Send Settings ──────────────────────────────────────────────────── -->
+{% if messages %}
+  {% for msg in messages %}
+  <div class="alert alert-success mb-16" style="background:#D1FAE5; border:1px solid #6EE7B7; color:#065F46; padding:12px 16px; border-radius:10px; font-size:14px;">
+    ✅ {{ msg }}
+  </div>
+  {% endfor %}
+{% endif %}
+
 <div class="card mb-24" style="border:2px solid var(--primary); background:var(--primary-light);">
-  <div class="card-header" style="background:transparent; border-color:#BFDBFE; cursor:pointer;" onclick="toggleGlobalSettings()">
+  <div class="card-header" style="background:transparent; border-color:#BFDBFE;">
     <div class="card-title" style="color:var(--primary);">
       ⚙️ Global Daily Send Limit &amp; SMTP Rotation
       {% if global_cfg.global_daily_limit %}
@@ -24,93 +32,96 @@
         <span class="badge" style="background:#6B7280; color:#fff; margin-left:6px;">Auto rotation</span>
       {% endif %}
     </div>
+    {% if global_cfg.global_daily_limit %}
     <div style="display:flex; align-items:center; gap:12px;">
-      {% if global_cfg.global_daily_limit %}
-        <span class="text-muted" style="font-size:13px;">{{ sent_today }} sent today</span>
-        <div style="width:100px; height:8px; background:#BFDBFE; border-radius:4px; overflow:hidden;">
-          <div style="height:100%; width:{% widthratio sent_today global_cfg.global_daily_limit 100 %}%; background:var(--primary); border-radius:4px;"></div>
-        </div>
-      {% endif %}
-      <span id="global-toggle-icon" style="color:var(--primary); font-size:18px;">▼</span>
-    </div>
-  </div>
-  <div id="global-settings-body" style="display:none;">
-    <form method="post" action="{% url 'smtp_profiles' %}">
-      {% csrf_token %}
-      <div class="card-body" style="background:transparent;">
-        <div class="form-grid">
-
-          <!-- Global daily limit -->
-          <div class="form-group">
-            <label class="form-label">Global Daily Limit (all campaigns combined)</label>
-            <select name="global_daily_limit" class="form-select" id="global-limit-sel" onchange="onGlobalLimitChange(this)">
-              <option value="0" {% if not global_cfg.global_daily_limit %}selected{% endif %}>No global limit</option>
-              <option value="100" {% if global_cfg.global_daily_limit == 100 %}selected{% endif %}>100 / day</option>
-              <option value="200" {% if global_cfg.global_daily_limit == 200 %}selected{% endif %}>200 / day</option>
-              <option value="300" {% if global_cfg.global_daily_limit == 300 %}selected{% endif %}>300 / day</option>
-              <option value="600" {% if global_cfg.global_daily_limit == 600 %}selected{% endif %}>600 / day</option>
-              <option value="900" {% if global_cfg.global_daily_limit == 900 %}selected{% endif %}>900 / day</option>
-              <option value="1200" {% if global_cfg.global_daily_limit == 1200 %}selected{% endif %}>1200 / day</option>
-              <option value="custom" id="global-limit-custom-opt">Custom…</option>
-            </select>
-            <input type="number" id="global-limit-custom" class="form-input mt-8"
-              placeholder="Enter custom limit" style="display:none;" min="1"
-              value="{{ global_cfg.global_daily_limit }}">
-            <div class="form-hint">
-              One cap for every campaign combined. Today: <strong>{{ sent_today }}</strong> emails sent.
-            </div>
-          </div>
-
-          <!-- SMTP rotation limit -->
-          <div class="form-group">
-            <label class="form-label">SMTP Rotation Trigger</label>
-            <select name="smtp_rotation_limit" class="form-select" id="rotation-limit-sel" onchange="onRotationChange(this)">
-              <option value="0" {% if global_cfg.smtp_rotation_limit == 0 %}selected{% endif %}>Auto — use each profile's own daily limit</option>
-              <option value="100" {% if global_cfg.smtp_rotation_limit == 100 %}selected{% endif %}>After 100 emails</option>
-              <option value="200" {% if global_cfg.smtp_rotation_limit == 200 %}selected{% endif %}>After 200 emails</option>
-              <option value="300" {% if global_cfg.smtp_rotation_limit == 300 %}selected{% endif %}>After 300 emails (Gmail / Brevo free)</option>
-              <option value="500" {% if global_cfg.smtp_rotation_limit == 500 %}selected{% endif %}>After 500 emails</option>
-              <option value="custom" id="rotation-custom-opt">Custom…</option>
-            </select>
-            <input type="number" id="rotation-custom" class="form-input mt-8"
-              placeholder="Enter custom rotation limit" style="display:none;" min="1"
-              value="{{ global_cfg.smtp_rotation_limit }}">
-            <div class="form-hint">
-              <strong>Auto:</strong> Each SMTP rotates when it hits its own daily limit set below.<br>
-              <strong>Custom:</strong> Force rotation after exactly N emails from each account, overriding per-profile limits.
-            </div>
-          </div>
-
-          <!-- SMTP rotation pool -->
-          {% if profiles %}
-          <div class="form-group full">
-            <label class="form-label">SMTP Rotation Pool (applied to all campaigns)</label>
-            <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(240px,1fr)); gap:8px; margin-top:6px;">
-              {% for p in profiles %}
-              <label class="form-check" style="padding:12px 14px; border:2px solid {% if p.id in global_smtp_selected %}var(--primary){% else %}var(--border){% endif %}; border-radius:10px; cursor:pointer; background:{% if p.id in global_smtp_selected %}var(--primary-light){% else %}#FAFAFA{% endif %}; transition:.2s;">
-                <input type="checkbox" name="global_smtp_profiles" value="{{ p.id }}" {% if p.id in global_smtp_selected %}checked{% endif %}>
-                <span>
-                  <strong style="font-size:13px;">{{ p.name }}</strong><br>
-                  <small class="text-muted font-mono">{{ p.user }}</small><br>
-                  <small class="text-muted">{{ p.host }}:{{ p.port }} · {% if p.daily_limit %}{{ p.daily_limit }}/day{% else %}Unlimited{% endif %}</small>
-                </span>
-              </label>
-              {% endfor %}
-            </div>
-            <div class="form-hint mt-8">
-              Checked profiles are used for automatic SMTP rotation across <strong>all</strong> campaigns.
-              Add 2 profiles at 300/day each → 600 emails per day total automatically.
-            </div>
-          </div>
-          {% endif %}
-
-        </div>
-        <div class="mt-16">
-          <button type="submit" class="btn btn-primary btn-sm">💾 Save Global Settings</button>
-        </div>
+      <span class="text-muted" style="font-size:13px;">{{ sent_today }} sent today</span>
+      <div style="width:100px; height:8px; background:#BFDBFE; border-radius:4px; overflow:hidden;">
+        <div style="height:100%; width:{% widthratio sent_today global_cfg.global_daily_limit 100 %}%; background:var(--primary); border-radius:4px;"></div>
       </div>
-    </form>
+    </div>
+    {% endif %}
   </div>
+
+  <form method="post" action="{% url 'smtp_profiles' %}" id="global-settings-form">
+    {% csrf_token %}
+    <!-- Hidden inputs — JS writes the resolved values here before submit -->
+    <input type="hidden" name="global_daily_limit" id="hdnGlobalLimit" value="{{ global_cfg.global_daily_limit }}">
+    <input type="hidden" name="smtp_rotation_limit" id="hdnRotationLimit" value="{{ global_cfg.smtp_rotation_limit }}">
+
+    <div class="card-body" style="background:transparent;">
+      <div class="form-grid">
+
+        <!-- Global daily limit -->
+        <div class="form-group">
+          <label class="form-label">Global Daily Limit (all campaigns combined)</label>
+          <select class="form-select" id="global-limit-sel" onchange="onGlobalLimitChange(this)">
+            <option value="0"    {% if not global_cfg.global_daily_limit %}selected{% endif %}>No global limit</option>
+            <option value="100"  {% if global_cfg.global_daily_limit == 100  %}selected{% endif %}>100 / day</option>
+            <option value="200"  {% if global_cfg.global_daily_limit == 200  %}selected{% endif %}>200 / day</option>
+            <option value="300"  {% if global_cfg.global_daily_limit == 300  %}selected{% endif %}>300 / day</option>
+            <option value="600"  {% if global_cfg.global_daily_limit == 600  %}selected{% endif %}>600 / day</option>
+            <option value="900"  {% if global_cfg.global_daily_limit == 900  %}selected{% endif %}>900 / day</option>
+            <option value="1200" {% if global_cfg.global_daily_limit == 1200 %}selected{% endif %}>1200 / day</option>
+            <option value="custom">Custom…</option>
+          </select>
+          <input type="number" id="global-limit-custom" class="form-input mt-8"
+            placeholder="Enter custom limit" style="display:none;" min="1"
+            value="{{ global_cfg.global_daily_limit }}"
+            oninput="document.getElementById('hdnGlobalLimit').value = this.value || '0'">
+          <div class="form-hint">
+            One cap for every campaign combined. Today: <strong>{{ sent_today }}</strong> emails sent.
+          </div>
+        </div>
+
+        <!-- SMTP rotation limit -->
+        <div class="form-group">
+          <label class="form-label">SMTP Rotation Trigger</label>
+          <select class="form-select" id="rotation-limit-sel" onchange="onRotationChange(this)">
+            <option value="0"   {% if global_cfg.smtp_rotation_limit == 0   %}selected{% endif %}>Auto — use each profile's own daily limit</option>
+            <option value="100" {% if global_cfg.smtp_rotation_limit == 100 %}selected{% endif %}>After 100 emails</option>
+            <option value="200" {% if global_cfg.smtp_rotation_limit == 200 %}selected{% endif %}>After 200 emails</option>
+            <option value="300" {% if global_cfg.smtp_rotation_limit == 300 %}selected{% endif %}>After 300 emails (Gmail / Brevo free)</option>
+            <option value="500" {% if global_cfg.smtp_rotation_limit == 500 %}selected{% endif %}>After 500 emails</option>
+            <option value="custom">Custom…</option>
+          </select>
+          <input type="number" id="rotation-custom" class="form-input mt-8"
+            placeholder="Enter custom rotation limit" style="display:none;" min="1"
+            value="{{ global_cfg.smtp_rotation_limit }}"
+            oninput="document.getElementById('hdnRotationLimit').value = this.value || '0'">
+          <div class="form-hint">
+            <strong>Auto:</strong> Each SMTP rotates when it hits its own daily limit.<br>
+            <strong>Custom:</strong> Force rotation after exactly N emails from each account.
+          </div>
+        </div>
+
+        <!-- SMTP rotation pool -->
+        {% if profiles %}
+        <div class="form-group full">
+          <label class="form-label">SMTP Rotation Pool (applied to all campaigns)</label>
+          <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(240px,1fr)); gap:8px; margin-top:6px;">
+            {% for p in profiles %}
+            <label class="form-check" style="padding:12px 14px; border:2px solid {% if p.id in global_smtp_selected %}var(--primary){% else %}var(--border){% endif %}; border-radius:10px; cursor:pointer; background:{% if p.id in global_smtp_selected %}var(--primary-light){% else %}#FAFAFA{% endif %}; transition:.2s;">
+              <input type="checkbox" name="global_smtp_profiles" value="{{ p.id }}" {% if p.id in global_smtp_selected %}checked{% endif %}>
+              <span>
+                <strong style="font-size:13px;">{{ p.name }}</strong><br>
+                <small class="text-muted font-mono">{{ p.user }}</small><br>
+                <small class="text-muted">{{ p.host }}:{{ p.port }} · {% if p.daily_limit %}{{ p.daily_limit }}/day{% else %}Unlimited{% endif %}</small>
+              </span>
+            </label>
+            {% endfor %}
+          </div>
+          <div class="form-hint mt-8">
+            Checked profiles are used for automatic SMTP rotation across <strong>all</strong> campaigns.
+          </div>
+        </div>
+        {% endif %}
+
+      </div>
+      <div class="mt-16">
+        <button type="submit" class="btn btn-primary btn-sm">💾 Save Global Settings</button>
+      </div>
+    </div>
+  </form>
 </div>
 
 <!-- Add Profile Form (hidden by default) -->
@@ -303,63 +314,56 @@ document.getElementById('add-profile-btn2')?.addEventListener('click', show);
 document.getElementById('close-form-btn')?.addEventListener('click', hide);
 document.getElementById('cancel-form-btn')?.addEventListener('click', hide);
 
-// Global settings toggle
-let _globalOpen = false;
-function toggleGlobalSettings() {
-  _globalOpen = !_globalOpen;
-  document.getElementById('global-settings-body').style.display = _globalOpen ? '' : 'none';
-  document.getElementById('global-toggle-icon').textContent = _globalOpen ? '▲' : '▼';
-}
-
-// Global daily limit custom input
+// Global daily limit — show/hide custom input, write to hidden field
 function onGlobalLimitChange(sel) {
   const customEl = document.getElementById('global-limit-custom');
+  const hdn     = document.getElementById('hdnGlobalLimit');
   const isCustom = sel.value === 'custom';
   customEl.style.display = isCustom ? '' : 'none';
-  if (isCustom) {
-    sel.removeAttribute('name');
-    customEl.name = 'global_daily_limit';
+  if (!isCustom) {
+    hdn.value = sel.value;          // preset value → hidden input
   } else {
-    sel.name = 'global_daily_limit';
-    customEl.removeAttribute('name');
+    hdn.value = customEl.value || '0';  // custom text → hidden input
+    customEl.focus();
   }
 }
 
-// Rotation limit custom input
+// SMTP rotation trigger — show/hide custom input, write to hidden field
 function onRotationChange(sel) {
   const customEl = document.getElementById('rotation-custom');
+  const hdn     = document.getElementById('hdnRotationLimit');
   const isCustom = sel.value === 'custom';
   customEl.style.display = isCustom ? '' : 'none';
-  if (isCustom) {
-    sel.removeAttribute('name');
-    customEl.name = 'smtp_rotation_limit';
+  if (!isCustom) {
+    hdn.value = sel.value;
   } else {
-    sel.name = 'smtp_rotation_limit';
-    customEl.removeAttribute('name');
+    hdn.value = customEl.value || '0';
+    customEl.focus();
   }
 }
 
-// Initialize — set correct name attributes based on current values
+// Initialize — if current value isn't in the preset list, show custom input
 (function() {
   const gSel = document.getElementById('global-limit-sel');
   const rSel = document.getElementById('rotation-limit-sel');
+
   if (gSel) {
     const presets = ['0','100','200','300','600','900','1200'];
     const val = '{{ global_cfg.global_daily_limit }}';
-    if (!presets.includes(val) && val !== '0') {
+    if (val !== '0' && !presets.includes(val)) {
       gSel.value = 'custom';
+      document.getElementById('global-limit-custom').style.display = '';
     }
-    // Always call to ensure correct name assignment
-    onGlobalLimitChange(gSel);
+    // hidden input already has the right value from the template
   }
+
   if (rSel) {
     const presets = ['0','100','200','300','500'];
     const val = '{{ global_cfg.smtp_rotation_limit }}';
-    if (!presets.includes(val) && val !== '0') {
+    if (val !== '0' && !presets.includes(val)) {
       rSel.value = 'custom';
+      document.getElementById('rotation-custom').style.display = '';
     }
-    // Always call to ensure correct name assignment
-    onRotationChange(rSel);
   }
 })();
 

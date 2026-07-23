@@ -5,6 +5,7 @@ from scraper import views
 urlpatterns = [
     path('login/', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
+    path('unsubscribe/<str:token>/', views.unsubscribe_view, name='unsubscribe'),
     path('admin/', admin.site.urls),
 
     # Dashboard

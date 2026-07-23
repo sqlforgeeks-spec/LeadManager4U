@@ -9,6 +9,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.db.models import Q
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import authenticate, login, logout
+from django.core import signing
 
 from .models import (
     BusinessListing, ScrapeJob, JobLog, EmailCampaign, EmailSend,
@@ -2626,6 +2627,28 @@ def api_lead_scores(request):
                         "website": lead.website, "address": lead.address})
         scores.append({"id": lead.id, "score": s, "label": score_lead_label(s)})
     return JsonResponse({"scores": scores})
+
+
+# ─── Unsubscribe (no login required) ─────────────────────────────────────────
+
+def unsubscribe_view(request, token):
+    """Public one-click unsubscribe. Marks the lead as stopped."""
+    try:
+        email = signing.loads(token, salt="unsubscribe", max_age=60 * 60 * 24 * 90)  # 90-day window
+    except signing.BadSignature:
+        return render(request, "unsubscribe.html", {"success": False, "already": False})
+
+    listing = BusinessListing.objects.filter(email__iexact=email).first()
+    if not listing:
+        # Email not in DB — still show success (don't leak info)
+        return render(request, "unsubscribe.html", {"success": True, "email": email})
+
+    if listing.lead_status == "stopped":
+        return render(request, "unsubscribe.html", {"already": True, "email": email})
+
+    listing.lead_status = "stopped"
+    listing.save(update_fields=["lead_status"])
+    return render(request, "unsubscribe.html", {"success": True, "email": email})
 
 
 # ─── Create campaign from selected leads ─────────────────────────────────────

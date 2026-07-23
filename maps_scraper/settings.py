@@ -97,6 +97,15 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Allow Replit's preview iframe to load the app
 X_FRAME_OPTIONS = 'ALLOWALL'
 
+# Public base URL used to build unsubscribe links in outgoing emails.
+# On Replit: set SITE_URL to your deployed domain (e.g. https://yourapp.replit.app).
+# Falls back to the dev tunnel, then localhost.
+_replit_dev = os.environ.get('REPLIT_DEV_DOMAIN', '')
+SITE_URL = os.environ.get(
+    'SITE_URL',
+    f"https://{_replit_dev}" if _replit_dev else "http://localhost:5000"
+)
+
 # SMTP defaults (overridden per campaign)
 EMAIL_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
 EMAIL_PORT = int(os.environ.get('SMTP_PORT', '587'))

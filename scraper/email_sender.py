@@ -15,10 +15,11 @@ import smtplib
 import threading
 import time
 import logging
-import uuid
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.utils import formatdate, make_msgid
+from django.conf import settings
+from django.core import signing
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -113,6 +114,28 @@ def vary_body(body: str) -> str:
             break
 
     return body_text
+
+
+# ─── Unsubscribe helpers ──────────────────────────────────────────────────────
+
+def _make_unsubscribe_url(email: str) -> str:
+    """Return a signed unsubscribe URL for the given email address."""
+    token = signing.dumps(email, salt="unsubscribe")
+    base = getattr(settings, "SITE_URL", "").rstrip("/")
+    return f"{base}/unsubscribe/{token}/"
+
+
+def _plain_footer(unsub_url: str) -> str:
+    return f"\n\n---\nTo unsubscribe, visit: {unsub_url}"
+
+
+def _html_footer(unsub_url: str) -> str:
+    return (
+        f'<br><br><hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">'
+        f'<p style="font-size:11px;color:#9CA3AF;text-align:center;">'
+        f'You received this email as part of an outreach campaign.<br>'
+        f'<a href="{unsub_url}" style="color:#6B7280;">Unsubscribe</a></p>'
+    )
 
 
 # ─── SMTP helpers ─────────────────────────────────────────────────────────────
@@ -379,21 +402,32 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
                 sender_email = campaign.from_email or slot_user or ""
                 sender_name  = campaign.from_name or ""
                 from_header  = f"{sender_name} <{sender_email}>" if sender_name else sender_email
+                domain       = sender_email.split("@")[-1] if "@" in sender_email else "mail.local"
+
+                unsub_url    = _make_unsubscribe_url(listing.email)
+                plain_body   = body + _plain_footer(unsub_url)
+                html_body    = (
+                    '<html><body style="font-family:Arial,sans-serif;font-size:14px;'
+                    'color:#333;line-height:1.6;max-width:600px;margin:auto;padding:20px;">'
+                    + body.replace("\n", "<br>")
+                    + _html_footer(unsub_url)
+                    + "</body></html>"
+                )
 
                 msg = MIMEMultipart("alternative")
-                msg["Subject"]      = subject
-                msg["From"]         = from_header
-                msg["To"]           = listing.email
-                msg["Date"]         = formatdate(localtime=False)
-                msg["Message-ID"]   = make_msgid(domain=sender_email.split("@")[-1] if "@" in sender_email else "mail.local")
-                msg["MIME-Version"] = "1.0"
+                msg["Subject"]          = subject
+                msg["From"]             = from_header
+                msg["To"]               = listing.email
+                msg["Date"]             = formatdate(localtime=False)
+                msg["Message-ID"]       = make_msgid(domain=domain)
+                msg["MIME-Version"]     = "1.0"
+                msg["List-Unsubscribe"] = f"<{unsub_url}>, <mailto:{sender_email}?subject=unsubscribe>"
+                msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
                 if campaign.reply_to:
                     msg["Reply-To"] = campaign.reply_to
 
-                # Plain-text part first, then HTML — clients prefer the last matching part
-                msg.attach(MIMEText(body, "plain", "utf-8"))
-                html_body = "<html><body>" + body.replace("\n", "<br>") + "</body></html>"
-                msg.attach(MIMEText(html_body, "html", "utf-8"))
+                msg.attach(MIMEText(plain_body, "plain", "utf-8"))
+                msg.attach(MIMEText(html_body,  "html",  "utf-8"))
 
                 slot_host, slot_port, slot_user, slot_pwd, slot_tls = smtp_slots[slot_idx]["creds"]
                 smtp.sendmail(sender_email or slot_user, [listing.email], msg.as_string())

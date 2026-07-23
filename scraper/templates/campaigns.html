@@ -4,149 +4,69 @@
 {% block topbar_title %}Email Campaigns{% endblock %}
 
 {% block topbar_actions %}
-  <a href="{% url 'smtp_profiles' %}" class="btn btn-secondary btn-sm">🔑 SMTP Profiles</a>
+  <a href="{% url 'smtp_profiles' %}" class="btn btn-secondary btn-sm">🔑 SMTP &amp; Limits</a>
   <a href="{% url 'new_campaign' %}" class="btn btn-primary btn-sm">+ New Campaign</a>
 {% endblock %}
 
 {% block content %}
 
-<!-- ── Global Send Settings ──────────────────────────────────────────────── -->
-<div class="card mb-24" style="border:2px solid var(--primary); background:var(--primary-light);">
-  <div class="card-header" style="background:transparent; border-color:#BFDBFE; cursor:pointer;" onclick="toggleGlobalSettings()">
-    <div class="card-title" style="color:var(--primary);">
-      ⚙️ Global Daily Send Limit &amp; SMTP Rotation Pool
-      {% if global_cfg.global_daily_limit %}
-        <span class="badge" style="background:#2563EB; color:#fff; margin-left:10px;">{{ global_cfg.global_daily_limit }}/day global cap</span>
-      {% endif %}
-    </div>
-    <div style="display:flex; align-items:center; gap:12px;">
-      {% if global_cfg.global_daily_limit %}
-        <span class="text-muted" style="font-size:13px;">{{ sent_today }} sent today</span>
-        <div style="width:100px; height:8px; background:#BFDBFE; border-radius:4px; overflow:hidden;">
-          <div style="height:100%; width:{% widthratio sent_today global_cfg.global_daily_limit 100 %}%; background:var(--primary); border-radius:4px;"></div>
-        </div>
-      {% endif %}
-      <span id="global-toggle-icon" style="color:var(--primary); font-size:18px;">▼</span>
-    </div>
+<!-- Global cap info bar -->
+{% if global_cfg.global_daily_limit %}
+<div class="alert alert-info mb-24" style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+  <span>⚙️ <strong>Global daily cap:</strong> {{ global_cfg.global_daily_limit }} emails/day &nbsp;·&nbsp; <strong>{{ sent_today }}</strong> sent today</span>
+  <div style="flex:1; min-width:120px; height:8px; background:#BFDBFE; border-radius:4px; overflow:hidden;">
+    <div style="height:100%; width:{% widthratio sent_today global_cfg.global_daily_limit 100 %}%; background:var(--primary); border-radius:4px;"></div>
   </div>
-  <div id="global-settings-body" style="display:none;">
-    <form method="post" action="{% url 'campaigns' %}">
-      {% csrf_token %}
-      <div class="card-body" style="background:transparent;">
-        <div class="form-grid">
-          <div class="form-group">
-            <label class="form-label">Global Daily Limit (all campaigns combined)</label>
-            <select name="global_daily_limit" class="form-select" id="global-limit-sel">
-              <option value="0" {% if not global_cfg.global_daily_limit %}selected{% endif %}>No global limit</option>
-              <option value="100" {% if global_cfg.global_daily_limit == 100 %}selected{% endif %}>100 / day</option>
-              <option value="200" {% if global_cfg.global_daily_limit == 200 %}selected{% endif %}>200 / day</option>
-              <option value="300" {% if global_cfg.global_daily_limit == 300 %}selected{% endif %}>300 / day</option>
-              <option value="600" {% if global_cfg.global_daily_limit == 600 %}selected{% endif %}>600 / day</option>
-              <option value="900" {% if global_cfg.global_daily_limit == 900 %}selected{% endif %}>900 / day</option>
-              <option value="1200" {% if global_cfg.global_daily_limit == 1200 %}selected{% endif %}>1200 / day</option>
-              <option value="custom" id="global-limit-custom-opt">Custom…</option>
-            </select>
-            <input type="number" name="global_daily_limit_custom" id="global-limit-custom" class="form-input mt-8"
-              placeholder="Enter custom limit" style="display:none;" min="1"
-              value="{{ global_cfg.global_daily_limit }}">
-            <div class="form-hint">
-              One cap covering every campaign together. E.g. set 600 here, add 2 SMTP profiles at 300 each — both profiles get used automatically.
-              Today: <strong>{{ sent_today }}</strong> emails sent across all campaigns.
-            </div>
-          </div>
-
-          {% if smtp_profiles %}
-          <div class="form-group full">
-            <label class="form-label">Global SMTP Rotation Pool</label>
-            <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(230px,1fr)); gap:8px; margin-top:6px;">
-              {% for p in smtp_profiles %}
-              <label class="form-check" style="padding:10px 14px; border:1px solid {% if p.id in global_smtp_selected %}var(--primary){% else %}var(--border){% endif %}; border-radius:8px; cursor:pointer; background:{% if p.id in global_smtp_selected %}var(--primary-light){% else %}#fff{% endif %}; transition:.15s;">
-                <input type="checkbox" name="global_smtp_profiles" value="{{ p.id }}"
-                  {% if p.id in global_smtp_selected %}checked{% endif %}>
-                <span>
-                  <strong>{{ p.name }}</strong><br>
-                  <small class="text-muted font-mono">{{ p.user }}</small><br>
-                  <small class="text-muted">Limit: {% if p.daily_limit %}{{ p.daily_limit }}/day{% else %}Unlimited{% endif %}</small>
-                </span>
-              </label>
-              {% endfor %}
-            </div>
-            <div class="form-hint mt-8">
-              These SMTP accounts are available to <strong>every campaign</strong> for rotation. When one hits its daily cap, the campaign auto-switches to the next one. You don't need to configure SMTP on each campaign separately.
-            </div>
-          </div>
-          {% else %}
-          <div class="form-group">
-            <label class="form-label">Global SMTP Pool</label>
-            <div class="form-hint">
-              <a href="{% url 'smtp_profiles' %}" class="text-primary">Add SMTP profiles</a> first, then assign them to the global pool here.
-            </div>
-          </div>
-          {% endif %}
-        </div>
-        <div class="flex gap-12 mt-16">
-          <button type="submit" class="btn btn-primary">💾 Save Global Settings</button>
-        </div>
-      </div>
-    </form>
-  </div>
+  <a href="{% url 'smtp_profiles' %}" class="btn btn-ghost btn-sm" style="white-space:nowrap;">Edit Limits →</a>
 </div>
+{% else %}
+<div class="alert" style="background:#F8FAFC; border:1px solid var(--border); margin-bottom:24px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+  <span style="font-size:13px; color:var(--text-muted);">No global send limit set. All campaigns can send without a cap.</span>
+  <a href="{% url 'smtp_profiles' %}" class="btn btn-ghost btn-sm">⚙️ Set Limit →</a>
+</div>
+{% endif %}
 
-<!-- ── Campaign List ─────────────────────────────────────────────────────── -->
 {% if campaigns %}
 <div class="card">
-  <div class="card-header">
-    <div class="card-title">All Campaigns</div>
-    <input type="text" class="form-input" style="max-width:220px;" placeholder="Filter…" oninput="filterTable('campaigns-table', this.value)">
-  </div>
   <div class="table-wrap">
-    <table class="table" id="campaigns-table">
+    <table class="table">
       <thead>
-        <tr>
-          <th>#</th><th>Name</th><th>Status</th><th>Subject</th>
-          <th>Targets</th><th>Sent</th><th>Failed</th>
-          <th>AI Vary</th><th>Scheduled</th><th>Actions</th>
-        </tr>
+        <tr><th>Campaign</th><th>Status</th><th>Progress</th><th>Sent</th><th>Failed</th><th>Skipped</th><th>Created</th><th></th></tr>
       </thead>
       <tbody>
-        {% for campaign in campaigns %}
-        <tr data-href="{% url 'campaign_detail' campaign.id %}">
-          <td class="text-muted font-mono">#{{ campaign.id }}</td>
-          <td><strong>{{ campaign.name }}</strong></td>
-          <td><span class="badge badge-{{ campaign.status }}">{{ campaign.get_status_display }}</span></td>
-          <td><span class="truncate" title="{{ campaign.subject }}" style="max-width:170px;">{{ campaign.subject }}</span></td>
-          <td>{{ campaign.total_targets }}</td>
-          <td class="text-success">{{ campaign.total_sent }}</td>
-          <td class="text-danger">{{ campaign.total_failed }}</td>
+        {% for c in campaigns %}
+        <tr onclick="window.location='/campaigns/{{ c.id }}/';" style="cursor:pointer;">
           <td>
-            {% if campaign.ai_variation %}
-              <span class="badge" style="background:#F5F3FF; color:#7C3AED;">✨ On</span>
-            {% else %}
-              <span class="text-muted" style="font-size:12px;">—</span>
-            {% endif %}
+            <strong>{{ c.name }}</strong>
+            {% if c.ai_variation %}<span class="badge" style="background:#F5F3FF; color:#7C3AED; font-size:11px; margin-left:6px;">✨ AI Var</span>{% endif %}
+            {% if c.job_filter %}<div style="font-size:12px; color:var(--text-muted); margin-top:2px;">Job #{{ c.job_filter.id }} — {{ c.job_filter.search_phrase }}</div>{% endif %}
           </td>
-          <td class="text-muted" style="font-size:12px;">
-            {% if campaign.scheduled_at %}⏰ {{ campaign.scheduled_at|date:"M j H:i" }}{% else %}—{% endif %}
+          <td>
+            <span class="badge badge-{{ c.status }}">{{ c.get_status_display }}</span>
+            {% if c.status == "sending" %}<span class="badge badge-live" style="margin-left:4px;">Live</span>{% endif %}
+            {% if c.status == "scheduled" and c.scheduled_at %}<div style="font-size:11px; color:var(--text-muted); margin-top:2px;">⏰ {{ c.scheduled_at|date:"M j H:i" }}</div>{% endif %}
           </td>
+          <td style="min-width:100px;">
+            {% if c.total_targets %}
+            <div class="progress-wrap" style="height:6px; margin-bottom:4px;">
+              <div class="progress-bar" style="width:{{ c.progress_pct }}%;"></div>
+            </div>
+            <div style="font-size:11px; color:var(--text-muted);">{{ c.progress_pct }}%</div>
+            {% else %}—{% endif %}
+          </td>
+          <td class="text-success font-mono">{{ c.total_sent }}</td>
+          <td class="text-danger font-mono">{{ c.total_failed }}</td>
+          <td class="text-muted font-mono">{{ c.total_skipped }}</td>
+          <td class="text-muted" style="font-size:12px; white-space:nowrap;">{{ c.created_at|date:"M j, Y" }}</td>
           <td class="no-row-click">
             <div class="action-group">
-              <a href="{% url 'campaign_detail' campaign.id %}" class="btn btn-secondary btn-sm">View</a>
-              {% if campaign.status == "draft" or campaign.status == "failed" or campaign.status == "stopped" %}
-                <form method="post" action="{% url 'send_campaign' campaign.id %}">
-                  {% csrf_token %}
-                  <button type="submit" class="btn btn-success btn-sm">▶ Send</button>
-                </form>
-              {% endif %}
-              {% if campaign.status == "sending" %}
-                <form method="post" action="{% url 'stop_campaign' campaign.id %}">
-                  {% csrf_token %}
-                  <button type="submit" class="btn btn-danger btn-sm">⏹ Stop</button>
-                </form>
-              {% endif %}
-              <form method="post" action="{% url 'delete_campaign' campaign.id %}" onsubmit="return confirm('Delete campaign?')">
+              <a href="{% url 'campaign_detail' c.id %}" class="btn btn-secondary btn-sm">View</a>
+              {% if c.status in "draft,failed,stopped" %}
+              <form method="post" action="{% url 'send_campaign' c.id %}">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-ghost btn-sm text-danger">🗑</button>
+                <button type="submit" class="btn btn-success btn-sm">▶ Send</button>
               </form>
+              {% endif %}
             </div>
           </td>
         </tr>
@@ -158,49 +78,14 @@
 {% else %}
 <div class="card">
   <div class="empty-state">
-    <div class="empty-icon">✉️</div>
+    <div class="empty-icon">📬</div>
     <div class="empty-title">No campaigns yet</div>
-    <div class="empty-desc">Create an email campaign to start reaching your leads.</div>
-    <div class="mt-16 flex gap-12" style="justify-content:center;">
-      <a href="{% url 'new_campaign' %}" class="btn btn-primary">+ Create First Campaign</a>
-      <a href="{% url 'smtp_profiles' %}" class="btn btn-secondary">🔑 Set Up SMTP Profile First</a>
+    <div class="empty-desc">Create your first email campaign to start reaching out to your leads.</div>
+    <div class="mt-16">
+      <a href="{% url 'new_campaign' %}" class="btn btn-primary">+ New Campaign</a>
     </div>
   </div>
 </div>
 {% endif %}
 
-{% endblock %}
-
-{% block scripts %}
-<script>
-let _globalOpen = {% if global_cfg.global_daily_limit or global_smtp_selected %}true{% else %}false{% endif %};
-function toggleGlobalSettings() {
-  const body = document.getElementById('global-settings-body');
-  const icon = document.getElementById('global-toggle-icon');
-  _globalOpen = !_globalOpen;
-  body.style.display = _globalOpen ? '' : 'none';
-  icon.textContent = _globalOpen ? '▲' : '▼';
-}
-// Auto-open if already configured
-if (_globalOpen) document.getElementById('global-settings-body').style.display = '';
-
-// Custom global limit
-const glSel = document.getElementById('global-limit-sel');
-const glCustom = document.getElementById('global-limit-custom');
-if (glSel && glCustom) {
-  // If current value doesn't match any option, select "custom"
-  const opts = [...glSel.options].map(o => o.value);
-  const cur = '{{ global_cfg.global_daily_limit }}';
-  if (cur && cur !== '0' && !opts.includes(cur)) {
-    glSel.value = 'custom';
-    glCustom.style.display = '';
-  }
-  glSel.addEventListener('change', () => {
-    glCustom.style.display = glSel.value === 'custom' ? '' : 'none';
-    glCustom.required = glSel.value === 'custom';
-    if (glSel.value !== 'custom') glCustom.name = '';
-    else glCustom.name = 'global_daily_limit';
-  });
-}
-</script>
 {% endblock %}

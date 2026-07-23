@@ -257,6 +257,9 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
         campaign.save(update_fields=["status", "updated_at"])
         return
 
+    # ── Rotation limit: 0 = auto (use per-profile cap), >0 = rotate after N emails ──
+    rotation_limit = global_cfg.smtp_rotation_limit  # 0 = auto
+
     # ── Connect first SMTP slot ───────────────────────────────────────────────
     slot_idx = 0
     slot_sent = 0
@@ -312,7 +315,10 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
                 break
 
             # ── Per-slot daily limit / rotation ───────────────────────────────
-            slot_cap = smtp_slots[slot_idx]["cap"]
+            # rotation_limit > 0 → rotate after that many emails (overrides per-profile cap)
+            # rotation_limit == 0 → auto: use each profile's own daily_limit
+            effective_cap = rotation_limit if rotation_limit > 0 else smtp_slots[slot_idx]["cap"]
+            slot_cap = effective_cap
             if slot_cap and slot_sent >= slot_cap:
                 log(f"SMTP '{smtp_slots[slot_idx]['label']}' hit its {slot_cap}/day cap.")
                 try:

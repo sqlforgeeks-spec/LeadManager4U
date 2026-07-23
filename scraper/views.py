@@ -1764,9 +1764,39 @@ def job_detail(request, job_id):
 # ─── SMTP Profiles ────────────────────────────────────────────────────────────
 
 def smtp_profiles(request):
+    from .models import AutoConfig
+    global_cfg = AutoConfig.get()
+
+    if request.method == "POST":
+        # Save global daily limit + SMTP rotation pool + rotation limit
+        try:
+            global_cfg.global_daily_limit = max(0, int(request.POST.get("global_daily_limit", "0")))
+        except ValueError:
+            pass
+        try:
+            global_cfg.smtp_rotation_limit = max(0, int(request.POST.get("smtp_rotation_limit", "0")))
+        except ValueError:
+            pass
+        profile_ids = request.POST.getlist("global_smtp_profiles")
+        try:
+            ids = [int(x) for x in profile_ids if str(x).isdigit()]
+            global_cfg.global_smtp_profiles.set(SmtpProfile.objects.filter(id__in=ids))
+        except Exception:
+            pass
+        global_cfg.save(update_fields=["global_daily_limit", "smtp_rotation_limit", "updated_at"])
+        return redirect("smtp_profiles")
+
+    from django.utils import timezone as tz
+    sent_today = EmailSend.objects.filter(
+        status="sent", sent_at__date=tz.localdate()
+    ).count()
+
     profiles = SmtpProfile.objects.all()
     return render(request, "smtp_profiles.html", {
         "profiles": profiles,
+        "global_cfg": global_cfg,
+        "global_smtp_selected": set(global_cfg.global_smtp_profiles.values_list("id", flat=True)),
+        "sent_today": sent_today,
         "global_stats": _global_stats(),
         "notifications": _get_notifications(),
         "active_page": "smtp",
@@ -1863,36 +1893,15 @@ def api_smtp_profile(request, profile_id):
 
 def campaigns(request):
     from .models import AutoConfig
-    global_cfg = AutoConfig.get()
-
-    if request.method == "POST":
-        # Save global daily limit + global SMTP pool
-        try:
-            global_cfg.global_daily_limit = max(0, int(request.POST.get("global_daily_limit", "0")))
-        except ValueError:
-            pass
-        profile_ids = request.POST.getlist("global_smtp_profiles")
-        try:
-            ids = [int(x) for x in profile_ids if x.isdigit()]
-            global_cfg.global_smtp_profiles.set(SmtpProfile.objects.filter(id__in=ids))
-        except Exception:
-            pass
-        global_cfg.save(update_fields=["global_daily_limit", "updated_at"])
-        return redirect("campaigns")
-
-    # Count today's total sends for global limit display
     from django.utils import timezone as tz
+    global_cfg = AutoConfig.get()
     sent_today = EmailSend.objects.filter(
         status="sent", sent_at__date=tz.localdate()
     ).count()
-
     campaign_list = EmailCampaign.objects.order_by("-created_at")
-    smtp_profiles_qs = SmtpProfile.objects.all()
     return render(request, "campaigns.html", {
         "campaigns": campaign_list,
-        "smtp_profiles": smtp_profiles_qs,
         "global_cfg": global_cfg,
-        "global_smtp_selected": set(global_cfg.global_smtp_profiles.values_list("id", flat=True)),
         "sent_today": sent_today,
         "global_stats": _global_stats(),
         "notifications": _get_notifications(),
@@ -1938,16 +1947,28 @@ def new_campaign(request):
         from_name = request.POST.get("from_name", "").strip()
         from_email = request.POST.get("from_email", "").strip()
         reply_to = request.POST.get("reply_to", "").strip()
-        smtp_host = request.POST.get("smtp_host", "smtp.gmail.com").strip()
-        smtp_user = request.POST.get("smtp_user", "").strip()
-        smtp_password = request.POST.get("smtp_password", "").strip()
-        use_tls = request.POST.get("use_tls", "on") == "on"
         job_filter_id = request.POST.get("job_filter", "")
         listing_ids_raw = request.POST.get("listing_ids", "").strip()
-        try:
-            smtp_port = int(request.POST.get("smtp_port", "587"))
-        except ValueError:
-            smtp_port = 587
+
+        # Load SMTP credentials from selected saved profile
+        profile_id = request.POST.get("smtp_profile_id", "").strip()
+        smtp_host = "smtp.gmail.com"
+        smtp_port = 587
+        smtp_user = ""
+        smtp_password = ""
+        use_tls = True
+        if profile_id:
+            try:
+                profile = SmtpProfile.objects.get(id=int(profile_id))
+                smtp_host = profile.host
+                smtp_port = profile.port
+                smtp_user = profile.user
+                smtp_password = profile.password
+                use_tls = profile.use_tls
+                if not from_email:
+                    from_email = profile.user
+            except (SmtpProfile.DoesNotExist, ValueError):
+                pass
 
         job_filter = None
         if job_filter_id:
@@ -1956,35 +1977,14 @@ def new_campaign(request):
             except (ScrapeJob.DoesNotExist, ValueError):
                 pass
 
-        daily_limit_raw = request.POST.get("daily_limit", "0")
-        if daily_limit_raw == "custom":
-            try:
-                daily_limit = max(0, int(request.POST.get("daily_limit_custom", "0")))
-            except ValueError:
-                daily_limit = 0
-        else:
-            try:
-                daily_limit = max(0, int(daily_limit_raw))
-            except ValueError:
-                daily_limit = 0
-
-        # Extra SMTP profile IDs for rotation
-        extra_profile_ids = request.POST.getlist("extra_smtp_profiles")
-
         campaign = EmailCampaign.objects.create(
             name=name, subject=subject, body=body,
             from_name=from_name, from_email=from_email, reply_to=reply_to,
             smtp_host=smtp_host, smtp_port=smtp_port, smtp_user=smtp_user,
             smtp_password=smtp_password, use_tls=use_tls,
             job_filter=job_filter,
-            daily_limit=daily_limit,
+            daily_limit=0,  # global limit applies
         )
-        if extra_profile_ids:
-            try:
-                ids = [int(x) for x in extra_profile_ids if x.isdigit()]
-                campaign.extra_smtp_profiles.set(SmtpProfile.objects.filter(id__in=ids))
-            except Exception:
-                pass
 
         # If specific listing IDs provided, use only those
         if listing_ids_raw:
@@ -2034,14 +2034,16 @@ def new_campaign(request):
 
 
 def campaign_detail(request, campaign_id):
-    from .models import EmailTemplate
+    from .models import EmailTemplate, AutoConfig
     campaign = get_object_or_404(EmailCampaign, id=campaign_id)
     sends = campaign.sends.select_related("listing").order_by("-listing__scraped_at")[:500]
     saved_templates = list(EmailTemplate.objects.values("id", "name", "subject", "body", "industry").order_by("-created_at"))
+    global_cfg = AutoConfig.get()
     return render(request, "campaign_detail.html", {
         "campaign": campaign,
         "sends": sends,
         "saved_templates": saved_templates,
+        "global_cfg": global_cfg,
         "global_stats": _global_stats(),
         "notifications": _get_notifications(),
         "active_page": "campaigns",
@@ -2125,6 +2127,38 @@ def delete_campaign(request, campaign_id):
     campaign = get_object_or_404(EmailCampaign, id=campaign_id)
     campaign.delete()
     return redirect("campaigns")
+
+
+def download_campaign_report(request, campaign_id):
+    """Download a CSV report for a campaign: who was sent, who failed, who was skipped."""
+    campaign = get_object_or_404(EmailCampaign, id=campaign_id)
+    sends = campaign.sends.select_related("listing").order_by("status", "listing__name")
+
+    import io
+    import csv as csv_module
+    output = io.StringIO()
+    writer = csv_module.writer(output)
+    writer.writerow([
+        "Status", "Business Name", "Email", "Phone", "Website",
+        "Location", "Sent At", "Error"
+    ])
+    for send in sends:
+        listing = send.listing
+        writer.writerow([
+            send.status.upper(),
+            listing.name,
+            listing.email,
+            listing.phone or "",
+            listing.website or "",
+            listing.location or "",
+            send.sent_at.strftime("%Y-%m-%d %H:%M:%S") if send.sent_at else "",
+            send.error or "",
+        ])
+
+    filename = f"campaign_{campaign.id}_report.csv"
+    response = HttpResponse(output.getvalue(), content_type="text/csv")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 
 # ─── Job deletion ─────────────────────────────────────────────────────────────

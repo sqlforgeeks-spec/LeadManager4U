@@ -43,6 +43,7 @@ urlpatterns = [
     path('campaigns/<int:campaign_id>/delete/', views.delete_campaign, name='delete_campaign'),
     path('campaigns/<int:campaign_id>/update-template/', views.update_campaign_template, name='update_campaign_template'),
     path('campaigns/<int:campaign_id>/toggle-ai-variation/', views.toggle_ai_variation, name='toggle_ai_variation'),
+    path('campaigns/<int:campaign_id>/report/', views.download_campaign_report, name='campaign_report'),
 
     # SMTP Profiles
     path('smtp/', views.smtp_profiles, name='smtp_profiles'),

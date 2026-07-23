@@ -83,6 +83,7 @@
 <form method="post" action="{% url 'new_campaign' %}" id="campaign-form">
   {% csrf_token %}
 
+  <!-- Campaign Info -->
   <div class="card mb-24">
     <div class="card-header"><div class="card-title">Campaign Info</div></div>
     <div class="card-body">
@@ -114,107 +115,54 @@
     </div>
   </div>
 
+  <!-- Sender & SMTP Profile -->
   <div class="card mb-24">
     <div class="card-header">
-      <div class="card-title">Sender &amp; SMTP Settings</div>
-      {% if smtp_profiles %}
-      <div style="display:flex; align-items:center; gap:10px;">
-        <label class="form-label" style="margin:0; white-space:nowrap;">Load from profile:</label>
-        <select id="smtp-profile-picker" class="form-select" style="min-width:200px;">
-          <option value="">— select saved profile —</option>
-          {% for p in smtp_profiles %}
-            <option value="{{ p.id }}" data-host="{{ p.host }}" data-port="{{ p.port }}" data-user="{{ p.user }}" data-tls="{{ p.use_tls|yesno:'true,false' }}">{{ p.name }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      {% else %}
-      <a href="{% url 'smtp_profiles' %}" class="btn btn-ghost btn-sm">+ Save SMTP Profile</a>
+      <div class="card-title">📬 Sender Settings</div>
+      {% if not smtp_profiles %}
+      <a href="{% url 'smtp_profiles' %}" class="btn btn-primary btn-sm">+ Add SMTP Profile first</a>
       {% endif %}
     </div>
     <div class="card-body">
+      {% if smtp_profiles %}
       <div class="form-grid">
+        <div class="form-group full">
+          <label class="form-label">SMTP Profile *</label>
+          <select name="smtp_profile_id" id="smtp-profile-picker" class="form-select" required>
+            <option value="">— select a profile —</option>
+            {% for p in smtp_profiles %}
+              <option value="{{ p.id }}" data-user="{{ p.user }}" data-host="{{ p.host }}" data-limit="{{ p.daily_limit }}">
+                {{ p.name }} — {{ p.user }}{% if p.daily_limit %} ({{ p.daily_limit }}/day){% endif %}
+              </option>
+            {% endfor %}
+          </select>
+          <div class="form-hint">Your SMTP profiles are managed on the <a href="{% url 'smtp_profiles' %}" class="text-primary">SMTP Profiles page</a>. Sending limits and rotation are configured there.</div>
+        </div>
         <div class="form-group">
           <label class="form-label">From Name</label>
           <input type="text" name="from_name" class="form-input" placeholder="John Smith" id="from-name">
+          <div class="form-hint">Display name shown to recipients.</div>
         </div>
         <div class="form-group">
-          <label class="form-label">From Email *</label>
-          <input type="email" name="from_email" class="form-input" placeholder="john@example.com" required id="from-email">
+          <label class="form-label">From Email</label>
+          <input type="email" name="from_email" class="form-input" placeholder="Auto-filled from profile" id="from-email">
+          <div class="form-hint">Leave blank to use the SMTP profile's email address.</div>
         </div>
         <div class="form-group">
           <label class="form-label">Reply-To (optional)</label>
           <input type="email" name="reply_to" class="form-input" placeholder="replies@example.com">
         </div>
-        <div class="form-group">
-          <label class="form-label">SMTP Host</label>
-          <input type="text" name="smtp_host" class="form-input" value="smtp.gmail.com" id="smtp-host">
-        </div>
-        <div class="form-group">
-          <label class="form-label">SMTP Port</label>
-          <input type="number" name="smtp_port" class="form-input" value="587" id="smtp-port">
-        </div>
-        <div class="form-group">
-          <label class="form-label">SMTP Username</label>
-          <input type="text" name="smtp_user" class="form-input" placeholder="your@gmail.com" autocomplete="off" id="smtp-user">
-        </div>
-        <div class="form-group">
-          <label class="form-label">SMTP Password / App Password</label>
-          <input type="password" name="smtp_password" class="form-input" placeholder="••••••••••••" autocomplete="new-password">
-          <div class="form-hint">For Gmail: use an App Password (Settings → Security → App Passwords).</div>
-        </div>
-        <div class="form-group">
-          <label class="form-check">
-            <input type="checkbox" name="use_tls" value="on" checked id="smtp-tls">
-            Use TLS (STARTTLS on port 587)
-          </label>
+      </div>
+      {% else %}
+      <div class="empty-state" style="padding:24px;">
+        <div class="empty-icon">🔑</div>
+        <div class="empty-title">No SMTP profiles saved yet</div>
+        <div class="empty-desc">Add at least one SMTP profile before creating a campaign. You can set sending limits and rotation there too.</div>
+        <div class="mt-16">
+          <a href="{% url 'smtp_profiles' %}" class="btn btn-primary btn-sm">+ Add SMTP Profile</a>
         </div>
       </div>
-    </div>
-  </div>
-
-  <!-- Daily Limit + SMTP Rotation -->
-  <div class="card mb-24">
-    <div class="card-header"><div class="card-title">⚙️ Daily Sending Limits &amp; SMTP Rotation</div></div>
-    <div class="card-body">
-      <div class="form-grid">
-        <div class="form-group">
-          <label class="form-label">Campaign Daily Send Limit</label>
-          <select name="daily_limit" class="form-select" id="daily-limit-sel">
-            <option value="0">Unlimited</option>
-            <option value="100">100 / day</option>
-            <option value="200">200 / day</option>
-            <option value="300">300 / day</option>
-            <option value="600">600 / day</option>
-            <option value="900">900 / day</option>
-            <option value="1200">1200 / day</option>
-            <option value="custom">Custom…</option>
-          </select>
-          <input type="number" name="daily_limit_custom" id="campaign-limit-custom" class="form-input mt-8"
-            placeholder="Enter custom daily limit" style="display:none;" min="1">
-          <div class="form-hint">Campaign stops automatically when this limit is hit. Use "Send Now" the next day to continue.</div>
-        </div>
-        {% if smtp_profiles %}
-        <div class="form-group full">
-          <label class="form-label">Additional SMTP Profiles for Rotation (optional)</label>
-          <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(220px,1fr)); gap:8px; margin-top:6px;">
-            {% for p in smtp_profiles %}
-            <label class="form-check" style="padding:10px 14px; border:1px solid var(--border); border-radius:8px; cursor:pointer;">
-              <input type="checkbox" name="extra_smtp_profiles" value="{{ p.id }}">
-              <span>
-                <strong>{{ p.name }}</strong><br>
-                <small class="text-muted font-mono">{{ p.user }}</small><br>
-                <small class="text-muted">Limit: {% if p.daily_limit %}{{ p.daily_limit }}/day{% else %}Unlimited{% endif %}</small>
-              </span>
-            </label>
-            {% endfor %}
-          </div>
-          <div class="form-hint mt-8">
-            When the primary SMTP (above) hits its per-profile daily limit, the campaign automatically rotates through these accounts.
-            A profile set to <strong>300/day</strong> with 2 extras at 300 each allows up to 900 emails per day total.
-          </div>
-        </div>
-        {% endif %}
-      </div>
+      {% endif %}
     </div>
   </div>
 
@@ -236,7 +184,9 @@
   {% endif %}
 
   <div class="flex gap-12">
+    {% if smtp_profiles %}
     <button type="submit" class="btn btn-primary btn-lg">Create Campaign</button>
+    {% endif %}
     <a href="{% url 'campaigns' %}" class="btn btn-secondary btn-lg">Cancel</a>
   </div>
 </form>
@@ -245,22 +195,15 @@
 
 {% block scripts %}
 <script>
-// Auto-fill SMTP fields from profile picker
+// Auto-fill from_email from profile picker
 const picker = document.getElementById('smtp-profile-picker');
 if (picker) {
   picker.addEventListener('change', () => {
     const opt = picker.options[picker.selectedIndex];
     if (!opt.value) return;
-    const host = opt.dataset.host;
-    const port = opt.dataset.port;
-    const user = opt.dataset.user;
-    const tls = opt.dataset.tls === 'true';
-    document.getElementById('smtp-host').value = host || '';
-    document.getElementById('smtp-port').value = port || '587';
-    document.getElementById('smtp-user').value = user || '';
-    document.getElementById('smtp-tls').checked = tls;
+    const user = opt.dataset.user || '';
     const fromEmail = document.getElementById('from-email');
-    if (!fromEmail.value && user) fromEmail.value = user;
+    if (fromEmail && !fromEmail.value) fromEmail.value = user;
   });
 }
 
@@ -272,17 +215,6 @@ if (jobId) {
   if (sel) {
     [...sel.options].forEach(opt => { if (opt.value === jobId) opt.selected = true; });
   }
-}
-
-// Campaign daily limit custom
-const dlSel = document.getElementById('daily-limit-sel');
-const dlCustom = document.getElementById('campaign-limit-custom');
-if (dlSel && dlCustom) {
-  dlSel.addEventListener('change', () => {
-    dlCustom.style.display = dlSel.value === 'custom' ? '' : 'none';
-    dlCustom.required = dlSel.value === 'custom';
-  });
-  // Server-side reads "daily_limit_custom" when daily_limit == "custom" — no JS trickery needed.
 }
 
 // ── Saved Templates Panel ────────────────────────────────────────────────────
@@ -319,7 +251,6 @@ function loadSavedTemplates() {
           <button type="button" class="btn btn-ghost btn-sm text-danger saved-tpl-del-btn">🗑</button>
         </div>
       `).join('');
-      // Bind handlers using data stored in JS (never injected into HTML attributes)
       list.querySelectorAll('.saved-tpl-row').forEach((row, i) => {
         const t = templates[i];
         row.querySelector('.saved-tpl-load-btn').addEventListener('click', () =>
@@ -337,6 +268,7 @@ function loadSavedTemplate(subject, body) {
   document.getElementById('campaign-subject').value = subject;
   document.getElementById('campaign-body').value = body;
   document.getElementById('campaign-form').scrollIntoView({ behavior: 'smooth' });
+  updateSaveBtnVisibility();
 }
 function deleteSavedTemplate(id, btn) {
   if (!confirm('Delete this saved template?')) return;
@@ -383,7 +315,7 @@ function saveTemplate() {
         resultEl.style.background = 'var(--success-light)';
         resultEl.style.color = 'var(--success)';
         resultEl.textContent = `✅ Saved "${data.name}" to templates.`;
-        _savedTemplatesLoaded = false; // force reload next open
+        _savedTemplatesLoaded = false;
         setTimeout(closeSaveTplModal, 1500);
       } else {
         resultEl.style.background = 'var(--danger-light)';
@@ -392,7 +324,6 @@ function saveTemplate() {
       }
     });
 }
-// Show "Save as Template" button once subject+body have content
 function updateSaveBtnVisibility() {
   const hasContent = document.getElementById('campaign-subject')?.value.trim() &&
                      document.getElementById('campaign-body')?.value.trim();

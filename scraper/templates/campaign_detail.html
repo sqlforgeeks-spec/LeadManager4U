@@ -32,8 +32,8 @@
   {% if campaign.status == "scheduled" and campaign.scheduled_at %}
     <span class="badge badge-queued">⏰ Scheduled: {{ campaign.scheduled_at|date:"M j, Y H:i" }}</span>
   {% endif %}
-  {% if campaign.daily_limit %}
-    <span class="badge" style="background:var(--warning-light); color:var(--warning);">⏱ {{ campaign.daily_limit }}/day limit</span>
+  {% if global_cfg.global_daily_limit %}
+    <span class="badge" style="background:var(--warning-light); color:var(--warning);">⏱ Global: {{ global_cfg.global_daily_limit }}/day</span>
   {% endif %}
   <span id="ai-badge" class="badge" style="background:{% if campaign.ai_variation %}#F5F3FF{% else %}#F1F5F9{% endif %}; color:{% if campaign.ai_variation %}#7C3AED{% else %}var(--text-muted){% endif %}; cursor:pointer;" onclick="toggleAiVariation()">
     ✨ AI Variation: <strong id="ai-badge-text">{% if campaign.ai_variation %}ON{% else %}OFF{% endif %}</strong>
@@ -75,115 +75,110 @@
 <div class="card mb-24">
   <div class="card-header"><div class="card-title">⚡ Actions</div></div>
   <div class="card-body">
-    <div class="flex gap-16" style="flex-wrap:wrap; align-items:flex-start;">
+
+    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(220px,1fr)); gap:20px; align-items:start;">
 
       <!-- Resend -->
-      <div>
-        <div class="form-label mb-4">Resend Emails</div>
-        <div class="flex gap-8">
+      <div style="padding:16px; background:#F8FAFC; border:1px solid var(--border); border-radius:10px;">
+        <div class="form-label mb-8" style="font-size:12px; letter-spacing:.05em; text-transform:uppercase; color:var(--text-muted);">↻ Resend</div>
+        <div class="flex gap-8" style="flex-direction:column;">
           <form method="post" action="{% url 'resend_campaign' campaign.id %}">
             {% csrf_token %}
             <input type="hidden" name="resend_mode" value="failed">
-            <button type="submit" class="btn btn-secondary btn-sm">↻ Resend Failed</button>
+            <button type="submit" class="btn btn-secondary btn-sm" style="width:100%;">↻ Resend Failed</button>
           </form>
           <form method="post" action="{% url 'resend_campaign' campaign.id %}" onsubmit="return confirm('This will reset ALL sends and resend to every recipient. Continue?')">
             {% csrf_token %}
             <input type="hidden" name="resend_mode" value="all">
-            <button type="submit" class="btn btn-ghost btn-sm">↻ Resend All</button>
+            <button type="submit" class="btn btn-ghost btn-sm" style="width:100%;">↻ Resend All</button>
           </form>
         </div>
-        <div class="form-hint">Resend failed — resets failed/skipped. Resend all — resets every recipient.</div>
+        <div class="form-hint mt-8">Failed only resets failed/skipped. All resets every recipient.</div>
       </div>
 
       <!-- Schedule -->
-      <div>
+      <div style="padding:16px; background:#F8FAFC; border:1px solid var(--border); border-radius:10px;">
+        <div class="form-label mb-8" style="font-size:12px; letter-spacing:.05em; text-transform:uppercase; color:var(--text-muted);">⏰ Schedule</div>
         {% if campaign.status != "scheduled" %}
-        <div class="form-label mb-4">Schedule Send</div>
-        <form method="post" action="{% url 'schedule_campaign' campaign.id %}" class="flex gap-8" style="align-items:center;">
+        <form method="post" action="{% url 'schedule_campaign' campaign.id %}">
           {% csrf_token %}
-          <input type="datetime-local" name="scheduled_at" class="form-input" style="max-width:210px;" required>
-          <button type="submit" class="btn btn-primary btn-sm">⏰ Schedule</button>
+          <input type="datetime-local" name="scheduled_at" class="form-input mb-8" required style="width:100%; box-sizing:border-box;">
+          <button type="submit" class="btn btn-primary btn-sm" style="width:100%;">⏰ Schedule Send</button>
         </form>
-        <div class="form-hint">Sends automatically at the chosen date/time.</div>
+        <div class="form-hint mt-8">Sends automatically at the chosen time.</div>
         {% else %}
-        <div class="form-label mb-4">Scheduled Send</div>
-        <div class="flex gap-8 items-center">
-          <span class="text-muted">{{ campaign.scheduled_at|date:"M j, Y H:i" }}</span>
-          <form method="post" action="{% url 'unschedule_campaign' campaign.id %}">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">Cancel</button></form>
-        </div>
+        <div style="font-size:13px; color:var(--text-muted); margin-bottom:10px;">⏰ {{ campaign.scheduled_at|date:"M j, Y H:i" }}</div>
+        <form method="post" action="{% url 'unschedule_campaign' campaign.id %}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-ghost btn-sm text-danger" style="width:100%;">✕ Cancel Schedule</button>
+        </form>
         {% endif %}
       </div>
 
-      <!-- 📋 Replace / Edit Template -->
-      <div>
-        <div class="form-label mb-4">📋 Email Template</div>
-        <button type="button" class="btn btn-primary btn-sm" onclick="toggleTemplateEditor()" id="tpl-open-btn">
-          📋 Replace Template
-          {% if campaign.status == "sending" %}<span style="font-size:10px; opacity:.8; margin-left:4px;">Live</span>{% endif %}
+      <!-- Replace Template -->
+      <div style="padding:16px; background:#F8FAFC; border:1px solid var(--border); border-radius:10px;">
+        <div class="form-label mb-8" style="font-size:12px; letter-spacing:.05em; text-transform:uppercase; color:var(--text-muted);">📋 Template</div>
+        <button type="button" class="btn btn-primary btn-sm" onclick="toggleTemplateEditor()" id="tpl-open-btn" style="width:100%;">
+          📋 Replace Template{% if campaign.status == "sending" %} <span style="font-size:10px; opacity:.75;">· Live</span>{% endif %}
         </button>
-        <div class="form-hint">Change subject &amp; body{% if campaign.status == "sending" %} — applies within next 25 emails{% endif %}.</div>
+        <div class="form-hint mt-8">Swap subject &amp; body{% if campaign.status == "sending" %} — applies within next 25 emails{% endif %}.</div>
       </div>
 
-      <!-- ✨ AI Variation toggle -->
-      <div>
-        <div class="form-label mb-4">✨ AI Email Variation</div>
-        <div style="padding:12px 16px; border:2px solid {% if campaign.ai_variation %}#8B5CF6{% else %}var(--border){% endif %}; border-radius:10px; background:{% if campaign.ai_variation %}#F5F3FF{% else %}#FAFAFA{% endif %}; min-width:240px; transition:.2s;" id="ai-variation-card">
-          <div class="flex items-center gap-12" style="margin-bottom:8px;">
-            <div style="flex:1;">
-              <strong style="font-size:13px; color:{% if campaign.ai_variation %}#7C3AED{% else %}var(--text){% endif %}">
-                AI Variation: <span id="ai-status-text">{% if campaign.ai_variation %}ON{% else %}OFF{% endif %}</span>
-              </strong>
-            </div>
-            <button type="button" id="ai-toggle-btn" onclick="toggleAiVariation()"
-              class="btn btn-sm"
-              style="background:{% if campaign.ai_variation %}#8B5CF6{% else %}var(--border){% endif %}; color:{% if campaign.ai_variation %}#fff{% else %}var(--text-muted){% endif %}; border:none; min-width:54px; transition:.2s;">
-              {% if campaign.ai_variation %}ON{% else %}OFF{% endif %}
-            </button>
-          </div>
-          <div style="font-size:12px; color:var(--text-muted); line-height:1.5;">
-            When ON, each email gets a slightly different subject line and opening sentence — helps avoid Gmail/SMTP spam detection when sending bulk.
-          </div>
-        </div>
+      <!-- AI Variation -->
+      <div style="padding:16px; border:2px solid {% if campaign.ai_variation %}#8B5CF6{% else %}var(--border){% endif %}; border-radius:10px; background:{% if campaign.ai_variation %}#F5F3FF{% else %}#F8FAFC{% endif %}; transition:.2s;" id="ai-variation-card">
+        <div class="form-label mb-8" style="font-size:12px; letter-spacing:.05em; text-transform:uppercase; color:{% if campaign.ai_variation %}#7C3AED{% else %}var(--text-muted){% endif %};">✨ AI Variation</div>
+        <button type="button" id="ai-toggle-btn" onclick="toggleAiVariation()"
+          class="btn btn-sm" style="width:100%; background:{% if campaign.ai_variation %}#8B5CF6{% else %}var(--border){% endif %}; color:{% if campaign.ai_variation %}#fff{% else %}var(--text-muted){% endif %}; border:none; transition:.2s;">
+          <span id="ai-status-text">{% if campaign.ai_variation %}ON — Variation Active{% else %}OFF — Click to Enable{% endif %}</span>
+        </button>
+        <div class="form-hint mt-8" style="font-size:11px;">Varies subject &amp; opening per email to avoid spam filters.</div>
       </div>
+
+      <!-- Download Report -->
+      {% if campaign.status == "sent" or campaign.status == "stopped" or campaign.status == "failed" or campaign.total_sent > 0 %}
+      <div style="padding:16px; background:#F0FDF4; border:1px solid #BBF7D0; border-radius:10px;">
+        <div class="form-label mb-8" style="font-size:12px; letter-spacing:.05em; text-transform:uppercase; color:#16A34A;">📥 Report</div>
+        <a href="{% url 'campaign_report' campaign.id %}" class="btn btn-sm" style="width:100%; background:#16A34A; color:#fff; border-color:#16A34A; display:block; text-align:center; box-sizing:border-box;">
+          📥 Download CSV Report
+        </a>
+        <div class="form-hint mt-8" style="font-size:11px;">Exports all recipients: sent, failed, skipped — with timestamps.</div>
+      </div>
+      {% endif %}
 
     </div>
 
-    <!-- ── Inline Template Editor (slides open inside Actions card) ──────── -->
-    <div id="tpl-editor-panel" style="display:none; margin-top:20px; border-top:1px solid var(--border); padding-top:20px;">
+    <!-- ── Inline Template Editor (opens inside Actions card) ───────────── -->
+    <div id="tpl-editor-panel" style="display:none; margin-top:24px; border-top:2px solid {% if campaign.status == 'sending' %}#10B981{% else %}var(--border){% endif %}; padding-top:20px;">
       <div class="flex items-center gap-12 mb-16">
         <div style="font-size:15px; font-weight:600;">
-          ✏️ Edit Email Template
+          ✏️ Edit / Replace Email Template
           {% if campaign.status == "sending" %}
-            <span class="badge badge-live" style="margin-left:8px; font-size:11px;">Live — changes apply to next batch</span>
+            <span class="badge badge-live" style="margin-left:8px; font-size:11px;">Live — applies within next 25 emails</span>
           {% endif %}
         </div>
         <button type="button" class="btn btn-ghost btn-sm" onclick="toggleTemplateEditor()" style="margin-left:auto;">✕ Close</button>
       </div>
 
-      <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">
-        You can replace or edit the subject and body at any time{% if campaign.status == "sending" %} — even while sending; changes take effect within the next 25 emails{% endif %}.
-      </p>
-
       <!-- Load a saved template -->
       {% if saved_templates %}
       <div class="form-group mb-16">
-        <label class="form-label">🗂 Load / Replace with a Saved Template</label>
+        <label class="form-label">🗂 Load from Saved Template</label>
         <div class="flex gap-8" style="align-items:center; flex-wrap:wrap;">
-          <select id="saved-tpl-sel" class="form-select" style="max-width:360px;">
-            <option value="">— select a template to load —</option>
+          <select id="saved-tpl-sel" class="form-select" style="max-width:380px;">
+            <option value="">— select a saved template —</option>
             {% for t in saved_templates %}
             <option value="{{ t.id }}" data-subject="{{ t.subject|escapejs }}" data-body="{{ t.body|escapejs }}">
               {{ t.name }}{% if t.industry %} ({{ t.industry }}){% endif %}
             </option>
             {% endfor %}
           </select>
-          <button type="button" class="btn btn-secondary btn-sm" onclick="loadSavedTemplate()">⬇ Load</button>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="loadSavedTemplate()">⬇ Load into Editor</button>
         </div>
-        <div class="form-hint">Selecting a saved template fills the fields below — then click "Apply Changes" to save.</div>
+        <div class="form-hint">Pick a template to fill the fields below — then click "Apply Changes".</div>
       </div>
       {% else %}
       <div class="form-hint mb-16" style="padding:10px 14px; background:#F8FAFC; border-radius:8px; border:1px solid var(--border);">
-        No saved templates yet. Fill in the fields below and click "Save as New Template" to create one.
+        No saved templates yet. Edit below and click "Save as New Template" to create one.
       </div>
       {% endif %}
 
@@ -219,32 +214,26 @@
       <div class="meta-item">
         <div class="meta-label">Daily Limit</div>
         <div class="meta-value">
-          {% if campaign.daily_limit %}
-            <span class="badge" style="background:var(--warning-light); color:var(--warning);">{{ campaign.daily_limit }}/day</span>
+          {% if global_cfg.global_daily_limit %}
+            <span class="badge" style="background:var(--warning-light); color:var(--warning);">{{ global_cfg.global_daily_limit }}/day (global)</span>
           {% else %}
-            <span class="text-muted">Uses global cap (or unlimited)</span>
+            <span class="text-muted">No global cap set — <a href="{% url 'smtp_profiles' %}" class="text-primary">configure →</a></span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">SMTP Rotation</div>
+        <div class="meta-value">
+          {% if global_cfg.smtp_rotation_limit %}
+            <span class="badge badge-queued">Rotate every {{ global_cfg.smtp_rotation_limit }} emails</span>
+          {% else %}
+            <span class="text-muted">Auto (per-profile limits)</span>
           {% endif %}
         </div>
       </div>
       <div class="meta-item"><div class="meta-label">Job Filter</div><div class="meta-value">{% if campaign.job_filter %}<a href="{% if campaign.job_filter.source == 'maps' %}{% url 'job_detail' campaign.job_filter.id %}{% else %}{% url 'search_job_detail' campaign.job_filter.id %}{% endif %}" class="text-primary">Job #{{ campaign.job_filter.id }} — {{ campaign.job_filter.search_phrase }}</a>{% else %}All leads{% endif %}</div></div>
       <div class="meta-item"><div class="meta-label">Created</div><div class="meta-value">{{ campaign.created_at|date:"Y-m-d H:i" }}</div></div>
     </div>
-
-    {% with extra=campaign.extra_smtp_profiles.all %}
-    {% if extra %}
-    <div class="mt-16">
-      <div class="form-label mb-4">SMTP Rotation Profiles (this campaign)</div>
-      <div class="flex gap-8" style="flex-wrap:wrap;">
-        {% for p in extra %}
-        <span class="badge badge-queued" style="font-size:12px; padding:4px 10px;">
-          {{ p.name }}{% if p.daily_limit %} · {{ p.daily_limit }}/day{% endif %}
-        </span>
-        {% endfor %}
-      </div>
-      <div class="form-hint mt-4">Auto-rotates when the primary SMTP hits its cap.</div>
-    </div>
-    {% endif %}
-    {% endwith %}
 
     <div class="mt-16">
       <div class="form-label mb-4">Subject</div>
@@ -325,7 +314,13 @@ function toggleTemplateEditor() {
   const panel = document.getElementById('tpl-editor-panel');
   const btn = document.getElementById('tpl-open-btn');
   panel.style.display = _tplOpen ? '' : 'none';
-  if (btn) btn.style.background = _tplOpen ? 'var(--primary-dark, #1D4ED8)' : '';
+  if (btn) {
+    btn.style.background = _tplOpen ? 'var(--primary-dark,#1D4ED8)' : '';
+    btn.textContent = _tplOpen
+      ? '✕ Close Editor'
+      : '📋 Replace Template{% if campaign.status == "sending" %} · Live{% endif %}';
+  }
+  if (_tplOpen) panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function loadSavedTemplate() {
@@ -336,17 +331,13 @@ function loadSavedTemplate() {
   document.getElementById('edit-subject').value = opt.dataset.subject || '';
   document.getElementById('edit-body').value = opt.dataset.body || '';
   sel.selectedIndex = 0;
-  showTplResult(true, '✅ Template loaded — review the fields and click "Apply Changes" to save.');
+  showTplResult(true, '✅ Template loaded into editor — click "Apply Changes" to save.');
 }
 
 function saveTemplate() {
   const subject = document.getElementById('edit-subject').value.trim();
   const body = document.getElementById('edit-body').value.trim();
-  const resultEl = document.getElementById('tpl-result');
-  if (!subject || !body) {
-    showTplResult(false, 'Subject and body cannot be empty.');
-    return;
-  }
+  if (!subject || !body) { showTplResult(false, 'Subject and body cannot be empty.'); return; }
   const fd = new FormData();
   fd.append('csrfmiddlewaretoken', CSRF);
   fd.append('subject', subject);
@@ -357,7 +348,6 @@ function saveTemplate() {
     .then(data => {
       showTplResult(data.ok, data.msg);
       if (data.ok) {
-        // Update preview section
         document.getElementById('preview-subject').textContent = subject;
         document.getElementById('preview-body').textContent = body;
       }
@@ -387,7 +377,7 @@ function showTplResult(ok, msg) {
   el.style.background = ok ? 'var(--success-light)' : 'var(--danger-light)';
   el.style.color = ok ? 'var(--success)' : 'var(--danger)';
   el.textContent = msg;
-  if (ok) setTimeout(() => { el.style.display = 'none'; }, 3000);
+  if (ok) setTimeout(() => { el.style.display = 'none'; }, 4000);
 }
 
 // ── AI Variation toggle ───────────────────────────────────────────────────
@@ -401,7 +391,7 @@ function toggleAiVariation() {
   const card = document.getElementById('ai-variation-card');
 
   btn.disabled = true;
-  btn.textContent = '…';
+  statusText.textContent = '…';
 
   const fd = new FormData();
   fd.append('csrfmiddlewaretoken', CSRF);
@@ -410,18 +400,16 @@ function toggleAiVariation() {
     .then(data => {
       btn.disabled = false;
       _aiOn = data.ai_variation;
-      const onStr = _aiOn ? 'ON' : 'OFF';
-      btn.textContent = onStr;
-      statusText.textContent = onStr;
-      badgeText.textContent = onStr;
+      statusText.textContent = _aiOn ? 'ON — Variation Active' : 'OFF — Click to Enable';
+      badgeText.textContent = _aiOn ? 'ON' : 'OFF';
       btn.style.background = _aiOn ? '#8B5CF6' : 'var(--border)';
       btn.style.color = _aiOn ? '#fff' : 'var(--text-muted)';
       card.style.borderColor = _aiOn ? '#8B5CF6' : 'var(--border)';
-      card.style.background = _aiOn ? '#F5F3FF' : '#FAFAFA';
+      card.style.background = _aiOn ? '#F5F3FF' : '#F8FAFC';
       badge.style.background = _aiOn ? '#F5F3FF' : '#F1F5F9';
       badge.style.color = _aiOn ? '#7C3AED' : 'var(--text-muted)';
     })
-    .catch(() => { btn.disabled = false; btn.textContent = _aiOn ? 'ON' : 'OFF'; });
+    .catch(() => { btn.disabled = false; statusText.textContent = _aiOn ? 'ON — Variation Active' : 'OFF — Click to Enable'; });
 }
 </script>
 {% endblock %}

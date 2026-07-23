@@ -10,10 +10,107 @@
 
 {% block content %}
 
-<div class="alert alert-info mb-24">
-  <strong>💡 SMTP Profiles</strong> let you save your email sending credentials once and reuse them across campaigns.
-  For Gmail, use an <a href="https://myaccount.google.com/apppasswords" target="_blank" class="text-primary">App Password</a> instead of your account password.
-  Set a <strong>daily limit</strong> so the campaign auto-rotates to the next profile when one hits its cap.
+<!-- ── Global Send Settings ──────────────────────────────────────────────────── -->
+<div class="card mb-24" style="border:2px solid var(--primary); background:var(--primary-light);">
+  <div class="card-header" style="background:transparent; border-color:#BFDBFE; cursor:pointer;" onclick="toggleGlobalSettings()">
+    <div class="card-title" style="color:var(--primary);">
+      ⚙️ Global Daily Send Limit &amp; SMTP Rotation
+      {% if global_cfg.global_daily_limit %}
+        <span class="badge" style="background:#2563EB; color:#fff; margin-left:10px;">{{ global_cfg.global_daily_limit }}/day cap</span>
+      {% endif %}
+      {% if global_cfg.smtp_rotation_limit %}
+        <span class="badge" style="background:#7C3AED; color:#fff; margin-left:6px;">Rotate every {{ global_cfg.smtp_rotation_limit }}</span>
+      {% else %}
+        <span class="badge" style="background:#6B7280; color:#fff; margin-left:6px;">Auto rotation</span>
+      {% endif %}
+    </div>
+    <div style="display:flex; align-items:center; gap:12px;">
+      {% if global_cfg.global_daily_limit %}
+        <span class="text-muted" style="font-size:13px;">{{ sent_today }} sent today</span>
+        <div style="width:100px; height:8px; background:#BFDBFE; border-radius:4px; overflow:hidden;">
+          <div style="height:100%; width:{% widthratio sent_today global_cfg.global_daily_limit 100 %}%; background:var(--primary); border-radius:4px;"></div>
+        </div>
+      {% endif %}
+      <span id="global-toggle-icon" style="color:var(--primary); font-size:18px;">▼</span>
+    </div>
+  </div>
+  <div id="global-settings-body" style="display:none;">
+    <form method="post" action="{% url 'smtp_profiles' %}">
+      {% csrf_token %}
+      <div class="card-body" style="background:transparent;">
+        <div class="form-grid">
+
+          <!-- Global daily limit -->
+          <div class="form-group">
+            <label class="form-label">Global Daily Limit (all campaigns combined)</label>
+            <select name="global_daily_limit" class="form-select" id="global-limit-sel" onchange="onGlobalLimitChange(this)">
+              <option value="0" {% if not global_cfg.global_daily_limit %}selected{% endif %}>No global limit</option>
+              <option value="100" {% if global_cfg.global_daily_limit == 100 %}selected{% endif %}>100 / day</option>
+              <option value="200" {% if global_cfg.global_daily_limit == 200 %}selected{% endif %}>200 / day</option>
+              <option value="300" {% if global_cfg.global_daily_limit == 300 %}selected{% endif %}>300 / day</option>
+              <option value="600" {% if global_cfg.global_daily_limit == 600 %}selected{% endif %}>600 / day</option>
+              <option value="900" {% if global_cfg.global_daily_limit == 900 %}selected{% endif %}>900 / day</option>
+              <option value="1200" {% if global_cfg.global_daily_limit == 1200 %}selected{% endif %}>1200 / day</option>
+              <option value="custom" id="global-limit-custom-opt">Custom…</option>
+            </select>
+            <input type="number" name="global_daily_limit" id="global-limit-custom" class="form-input mt-8"
+              placeholder="Enter custom limit" style="display:none;" min="1"
+              value="{{ global_cfg.global_daily_limit }}">
+            <div class="form-hint">
+              One cap for every campaign combined. Today: <strong>{{ sent_today }}</strong> emails sent.
+            </div>
+          </div>
+
+          <!-- SMTP rotation limit -->
+          <div class="form-group">
+            <label class="form-label">SMTP Rotation Trigger</label>
+            <select name="smtp_rotation_limit" class="form-select" id="rotation-limit-sel" onchange="onRotationChange(this)">
+              <option value="0" {% if global_cfg.smtp_rotation_limit == 0 %}selected{% endif %}>Auto — use each profile's own daily limit</option>
+              <option value="100" {% if global_cfg.smtp_rotation_limit == 100 %}selected{% endif %}>After 100 emails</option>
+              <option value="200" {% if global_cfg.smtp_rotation_limit == 200 %}selected{% endif %}>After 200 emails</option>
+              <option value="300" {% if global_cfg.smtp_rotation_limit == 300 %}selected{% endif %}>After 300 emails (Gmail / Brevo free)</option>
+              <option value="500" {% if global_cfg.smtp_rotation_limit == 500 %}selected{% endif %}>After 500 emails</option>
+              <option value="custom" id="rotation-custom-opt">Custom…</option>
+            </select>
+            <input type="number" name="smtp_rotation_limit" id="rotation-custom" class="form-input mt-8"
+              placeholder="Enter custom rotation limit" style="display:none;" min="1"
+              value="{{ global_cfg.smtp_rotation_limit }}">
+            <div class="form-hint">
+              <strong>Auto:</strong> Each SMTP rotates when it hits its own daily limit set below.<br>
+              <strong>Custom:</strong> Force rotation after exactly N emails from each account, overriding per-profile limits.
+            </div>
+          </div>
+
+          <!-- SMTP rotation pool -->
+          {% if profiles %}
+          <div class="form-group full">
+            <label class="form-label">SMTP Rotation Pool (applied to all campaigns)</label>
+            <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(240px,1fr)); gap:8px; margin-top:6px;">
+              {% for p in profiles %}
+              <label class="form-check" style="padding:12px 14px; border:2px solid {% if p.id in global_smtp_selected %}var(--primary){% else %}var(--border){% endif %}; border-radius:10px; cursor:pointer; background:{% if p.id in global_smtp_selected %}var(--primary-light){% else %}#FAFAFA{% endif %}; transition:.2s;">
+                <input type="checkbox" name="global_smtp_profiles" value="{{ p.id }}" {% if p.id in global_smtp_selected %}checked{% endif %}>
+                <span>
+                  <strong style="font-size:13px;">{{ p.name }}</strong><br>
+                  <small class="text-muted font-mono">{{ p.user }}</small><br>
+                  <small class="text-muted">{{ p.host }}:{{ p.port }} · {% if p.daily_limit %}{{ p.daily_limit }}/day{% else %}Unlimited{% endif %}</small>
+                </span>
+              </label>
+              {% endfor %}
+            </div>
+            <div class="form-hint mt-8">
+              Checked profiles are used for automatic SMTP rotation across <strong>all</strong> campaigns.
+              Add 2 profiles at 300/day each → 600 emails per day total automatically.
+            </div>
+          </div>
+          {% endif %}
+
+        </div>
+        <div class="mt-16">
+          <button type="submit" class="btn btn-primary btn-sm">💾 Save Global Settings</button>
+        </div>
+      </div>
+    </form>
+  </div>
 </div>
 
 <!-- Add Profile Form (hidden by default) -->
@@ -49,18 +146,16 @@
         </div>
         <div class="form-group">
           <label class="form-label">Daily Send Limit</label>
-          <select name="daily_limit" class="form-select">
+          <select name="daily_limit" class="form-select" id="profile-daily-limit-sel">
             <option value="0">Unlimited</option>
             <option value="100">100 / day</option>
             <option value="200">200 / day</option>
-            <option value="300" selected>300 / day (Gmail free)</option>
+            <option value="300" selected>300 / day (Gmail free / Brevo free)</option>
             <option value="600">600 / day</option>
             <option value="900">900 / day</option>
             <option value="1200">1200 / day</option>
-            <option value="custom">Custom…</option>
           </select>
-          <input type="number" name="daily_limit_custom" id="daily-limit-custom" class="form-input mt-8" placeholder="Enter custom limit" style="display:none;" min="1">
-          <div class="form-hint">Campaign auto-rotates to the next SMTP when this profile hits its cap.</div>
+          <div class="form-hint">Used for Auto rotation — campaign switches to next SMTP when this profile reaches its cap.</div>
         </div>
         <div class="form-group">
           <label class="form-check">
@@ -165,7 +260,7 @@
         <div style="font-size:13px; color:var(--text-muted); margin-top:4px;">
           Host: <code>smtp.gmail.com</code> · Port: <code>587</code> · TLS: ✓<br>
           Use an <strong>App Password</strong> (not your Gmail password).<br>
-          Enable 2FA → Google Account → Security → App Passwords.
+          Enable 2FA → Google Account → Security → App Passwords.<br>
           Daily limit: ~300 free / ~2000 Workspace.
         </div>
       </div>
@@ -199,6 +294,7 @@
 
 {% block scripts %}
 <script>
+// Add profile form toggle
 const form = document.getElementById('add-profile-form');
 const show = () => { form.style.display = ''; form.scrollIntoView({behavior:'smooth'}); };
 const hide = () => { form.style.display = 'none'; };
@@ -207,21 +303,63 @@ document.getElementById('add-profile-btn2')?.addEventListener('click', show);
 document.getElementById('close-form-btn')?.addEventListener('click', hide);
 document.getElementById('cancel-form-btn')?.addEventListener('click', hide);
 
-// Custom daily limit
-const limitSel = form?.querySelector('select[name="daily_limit"]');
-const limitCustom = document.getElementById('daily-limit-custom');
-if (limitSel && limitCustom) {
-  limitSel.addEventListener('change', () => {
-    limitCustom.style.display = limitSel.value === 'custom' ? '' : 'none';
-    if (limitSel.value !== 'custom') limitCustom.name = '';
-    else limitCustom.name = 'daily_limit';
-  });
-  form.querySelector('form').addEventListener('submit', () => {
-    if (limitSel.value === 'custom') {
-      limitSel.disabled = true; // disable dropdown so custom input name wins
-    }
-  });
+// Global settings toggle
+let _globalOpen = false;
+function toggleGlobalSettings() {
+  _globalOpen = !_globalOpen;
+  document.getElementById('global-settings-body').style.display = _globalOpen ? '' : 'none';
+  document.getElementById('global-toggle-icon').textContent = _globalOpen ? '▲' : '▼';
 }
+
+// Global daily limit custom input
+function onGlobalLimitChange(sel) {
+  const customEl = document.getElementById('global-limit-custom');
+  const isCustom = sel.value === 'custom';
+  customEl.style.display = isCustom ? '' : 'none';
+  if (isCustom) {
+    sel.removeAttribute('name');
+    customEl.name = 'global_daily_limit';
+  } else {
+    sel.name = 'global_daily_limit';
+    customEl.removeAttribute('name');
+  }
+}
+
+// Rotation limit custom input
+function onRotationChange(sel) {
+  const customEl = document.getElementById('rotation-custom');
+  const isCustom = sel.value === 'custom';
+  customEl.style.display = isCustom ? '' : 'none';
+  if (isCustom) {
+    sel.removeAttribute('name');
+    customEl.name = 'smtp_rotation_limit';
+  } else {
+    sel.name = 'smtp_rotation_limit';
+    customEl.removeAttribute('name');
+  }
+}
+
+// Initialize — check if current value matches a preset
+(function() {
+  const gSel = document.getElementById('global-limit-sel');
+  const rSel = document.getElementById('rotation-limit-sel');
+  if (gSel) {
+    const presets = ['0','100','200','300','600','900','1200'];
+    const val = '{{ global_cfg.global_daily_limit }}';
+    if (!presets.includes(val) && val !== '0') {
+      gSel.value = 'custom';
+      onGlobalLimitChange(gSel);
+    }
+  }
+  if (rSel) {
+    const presets = ['0','100','200','300','500'];
+    const val = '{{ global_cfg.smtp_rotation_limit }}';
+    if (!presets.includes(val) && val !== '0') {
+      rSel.value = 'custom';
+      onRotationChange(rSel);
+    }
+  }
+})();
 
 // Test email modal
 let _testProfileId = null;

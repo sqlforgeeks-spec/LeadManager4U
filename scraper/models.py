@@ -308,7 +308,11 @@ class AutoConfig(models.Model):
     global_smtp_profiles = models.ManyToManyField(
         "SmtpProfile", blank=True,
         related_name="global_auto_configs",
-        help_text="Global SMTP rotation pool — any campaign without its own extra profiles will use these.",
+        help_text="Global SMTP rotation pool — used for every campaign automatically.",
+    )
+    smtp_rotation_limit = models.PositiveIntegerField(
+        default=0,
+        help_text="Rotate to next SMTP after this many emails from one account. 0 = Auto (uses each profile's own daily limit).",
     )
 
     # Auto-scrape

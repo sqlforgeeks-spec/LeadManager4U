@@ -1,0 +1,1 @@
+- [Global settings forms](global-settings-forms.md) — keep persisted settings derived and validated on the server, not dependent on hidden JavaScript fields.

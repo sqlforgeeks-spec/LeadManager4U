@@ -1768,23 +1768,61 @@ def smtp_profiles(request):
     global_cfg = AutoConfig.get()
 
     if request.method == "POST":
-        # Save global daily limit + SMTP rotation pool + rotation limit
-        try:
-            global_cfg.global_daily_limit = max(0, int(request.POST.get("global_daily_limit", "0")))
-        except ValueError:
-            pass
-        try:
-            global_cfg.smtp_rotation_limit = max(0, int(request.POST.get("smtp_rotation_limit", "0")))
-        except ValueError:
-            pass
-        profile_ids = request.POST.getlist("global_smtp_profiles")
-        try:
-            ids = [int(x) for x in profile_ids if str(x).isdigit()]
-            global_cfg.global_smtp_profiles.set(SmtpProfile.objects.filter(id__in=ids))
-        except Exception:
-            pass
-        global_cfg.save(update_fields=["global_daily_limit", "smtp_rotation_limit", "updated_at"])
+        # Read the visible controls directly. Previously these values were
+        # copied into hidden fields by JavaScript, so a browser script error
+        # could make the Save button silently save the old value.
+        def parse_limit(option_name, custom_name, legacy_name, label, current_value):
+            option = request.POST.get(option_name)
+            if option is None:
+                # Accept the old hidden-field names during a deploy where a
+                # previously rendered form is still open in the browser.
+                option = request.POST.get(legacy_name)
+                if option is None:
+                    # Do not reset a saved value if a partial/older form
+                    # submission does not include this control.
+                    return current_value
+            option = option.strip()
+            if option != "custom":
+                try:
+                    value = int(option)
+                except (TypeError, ValueError):
+                    raise ValueError(f"{label} must be a non-negative whole number.")
+            else:
+                raw_custom = request.POST.get(custom_name, "").strip()
+                try:
+                    value = int(raw_custom)
+                except (TypeError, ValueError):
+                    raise ValueError(f"Enter a whole number for the {label.lower()}.")
+            if value < 0:
+                raise ValueError(f"{label} cannot be negative.")
+            return value
+
         from django.contrib import messages
+        try:
+            global_limit = parse_limit(
+                "global_daily_limit_option",
+                "global_daily_limit_custom",
+                "global_daily_limit",
+                "Global daily limit",
+                global_cfg.global_daily_limit,
+            )
+            rotation_limit = parse_limit(
+                "smtp_rotation_limit_option",
+                "smtp_rotation_limit_custom",
+                "smtp_rotation_limit",
+                "SMTP rotation limit",
+                global_cfg.smtp_rotation_limit,
+            )
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return redirect("smtp_profiles")
+
+        profile_ids = request.POST.getlist("global_smtp_profiles")
+        ids = [int(profile_id) for profile_id in profile_ids if str(profile_id).isdigit()]
+        global_cfg.global_daily_limit = global_limit
+        global_cfg.smtp_rotation_limit = rotation_limit
+        global_cfg.save(update_fields=["global_daily_limit", "smtp_rotation_limit", "updated_at"])
+        global_cfg.global_smtp_profiles.set(SmtpProfile.objects.filter(id__in=ids))
         messages.success(request, "Global settings saved successfully.")
         return redirect("smtp_profiles")
 
@@ -1798,6 +1836,8 @@ def smtp_profiles(request):
         "profiles": profiles,
         "global_cfg": global_cfg,
         "global_smtp_selected": set(global_cfg.global_smtp_profiles.values_list("id", flat=True)),
+        "global_daily_limit_is_custom": global_cfg.global_daily_limit not in {0, 100, 200, 300, 600, 900, 1200},
+        "smtp_rotation_limit_is_custom": global_cfg.smtp_rotation_limit not in {0, 100, 200, 300, 500},
         "sent_today": sent_today,
         "global_stats": _global_stats(),
         "notifications": _get_notifications(),

@@ -13,8 +13,9 @@
 <!-- ── Global Send Settings ──────────────────────────────────────────────────── -->
 {% if messages %}
   {% for msg in messages %}
-  <div class="alert alert-success mb-16" style="background:#D1FAE5; border:1px solid #6EE7B7; color:#065F46; padding:12px 16px; border-radius:10px; font-size:14px;">
-    ✅ {{ msg }}
+  <div class="alert {% if 'error' in msg.tags %}alert-danger{% else %}alert-success{% endif %} mb-16"
+    style="{% if 'error' in msg.tags %}background:#FEE2E2; border:1px solid #FCA5A5; color:#991B1B;{% else %}background:#D1FAE5; border:1px solid #6EE7B7; color:#065F46;{% endif %} padding:12px 16px; border-radius:10px; font-size:14px;">
+    {% if 'error' in msg.tags %}⚠️{% else %}✅{% endif %} {{ msg }}
   </div>
   {% endfor %}
 {% endif %}
@@ -44,17 +45,13 @@
 
   <form method="post" action="{% url 'smtp_profiles' %}" id="global-settings-form">
     {% csrf_token %}
-    <!-- Hidden inputs — JS writes the resolved values here before submit -->
-    <input type="hidden" name="global_daily_limit" id="hdnGlobalLimit" value="{{ global_cfg.global_daily_limit }}">
-    <input type="hidden" name="smtp_rotation_limit" id="hdnRotationLimit" value="{{ global_cfg.smtp_rotation_limit }}">
-
     <div class="card-body" style="background:transparent;">
       <div class="form-grid">
 
         <!-- Global daily limit -->
         <div class="form-group">
           <label class="form-label">Global Daily Limit (all campaigns combined)</label>
-          <select class="form-select" id="global-limit-sel" onchange="onGlobalLimitChange(this)">
+          <select class="form-select" id="global-limit-sel" name="global_daily_limit_option" onchange="onGlobalLimitChange(this)">
             <option value="0"    {% if not global_cfg.global_daily_limit %}selected{% endif %}>No global limit</option>
             <option value="100"  {% if global_cfg.global_daily_limit == 100  %}selected{% endif %}>100 / day</option>
             <option value="200"  {% if global_cfg.global_daily_limit == 200  %}selected{% endif %}>200 / day</option>
@@ -62,12 +59,12 @@
             <option value="600"  {% if global_cfg.global_daily_limit == 600  %}selected{% endif %}>600 / day</option>
             <option value="900"  {% if global_cfg.global_daily_limit == 900  %}selected{% endif %}>900 / day</option>
             <option value="1200" {% if global_cfg.global_daily_limit == 1200 %}selected{% endif %}>1200 / day</option>
-            <option value="custom">Custom…</option>
+            <option value="custom" {% if global_daily_limit_is_custom %}selected{% endif %}>Custom…</option>
           </select>
           <input type="number" id="global-limit-custom" class="form-input mt-8"
             placeholder="Enter custom limit" style="display:none;" min="1"
-            value="{{ global_cfg.global_daily_limit }}"
-            oninput="document.getElementById('hdnGlobalLimit').value = this.value || '0'">
+            name="global_daily_limit_custom"
+            value="{% if global_daily_limit_is_custom %}{{ global_cfg.global_daily_limit }}{% endif %}">
           <div class="form-hint">
             One cap for every campaign combined. Today: <strong>{{ sent_today }}</strong> emails sent.
           </div>
@@ -76,18 +73,18 @@
         <!-- SMTP rotation limit -->
         <div class="form-group">
           <label class="form-label">SMTP Rotation Trigger</label>
-          <select class="form-select" id="rotation-limit-sel" onchange="onRotationChange(this)">
+          <select class="form-select" id="rotation-limit-sel" name="smtp_rotation_limit_option" onchange="onRotationChange(this)">
             <option value="0"   {% if global_cfg.smtp_rotation_limit == 0   %}selected{% endif %}>Auto — use each profile's own daily limit</option>
             <option value="100" {% if global_cfg.smtp_rotation_limit == 100 %}selected{% endif %}>After 100 emails</option>
             <option value="200" {% if global_cfg.smtp_rotation_limit == 200 %}selected{% endif %}>After 200 emails</option>
             <option value="300" {% if global_cfg.smtp_rotation_limit == 300 %}selected{% endif %}>After 300 emails (Gmail / Brevo free)</option>
             <option value="500" {% if global_cfg.smtp_rotation_limit == 500 %}selected{% endif %}>After 500 emails</option>
-            <option value="custom">Custom…</option>
+            <option value="custom" {% if smtp_rotation_limit_is_custom %}selected{% endif %}>Custom…</option>
           </select>
           <input type="number" id="rotation-custom" class="form-input mt-8"
             placeholder="Enter custom rotation limit" style="display:none;" min="1"
-            value="{{ global_cfg.smtp_rotation_limit }}"
-            oninput="document.getElementById('hdnRotationLimit').value = this.value || '0'">
+            name="smtp_rotation_limit_custom"
+            value="{% if smtp_rotation_limit_is_custom %}{{ global_cfg.smtp_rotation_limit }}{% endif %}">
           <div class="form-hint">
             <strong>Auto:</strong> Each SMTP rotates when it hits its own daily limit.<br>
             <strong>Custom:</strong> Force rotation after exactly N emails from each account.
@@ -314,32 +311,20 @@ document.getElementById('add-profile-btn2')?.addEventListener('click', show);
 document.getElementById('close-form-btn')?.addEventListener('click', hide);
 document.getElementById('cancel-form-btn')?.addEventListener('click', hide);
 
-// Global daily limit — show/hide custom input, write to hidden field
+// Global daily limit — show/hide the custom input.
 function onGlobalLimitChange(sel) {
   const customEl = document.getElementById('global-limit-custom');
-  const hdn     = document.getElementById('hdnGlobalLimit');
   const isCustom = sel.value === 'custom';
   customEl.style.display = isCustom ? '' : 'none';
-  if (!isCustom) {
-    hdn.value = sel.value;          // preset value → hidden input
-  } else {
-    hdn.value = customEl.value || '0';  // custom text → hidden input
-    customEl.focus();
-  }
+  if (isCustom) customEl.focus();
 }
 
-// SMTP rotation trigger — show/hide custom input, write to hidden field
+// SMTP rotation trigger — show/hide the custom input.
 function onRotationChange(sel) {
   const customEl = document.getElementById('rotation-custom');
-  const hdn     = document.getElementById('hdnRotationLimit');
   const isCustom = sel.value === 'custom';
   customEl.style.display = isCustom ? '' : 'none';
-  if (!isCustom) {
-    hdn.value = sel.value;
-  } else {
-    hdn.value = customEl.value || '0';
-    customEl.focus();
-  }
+  if (isCustom) customEl.focus();
 }
 
 // Initialize — if current value isn't in the preset list, show custom input
@@ -354,7 +339,7 @@ function onRotationChange(sel) {
       gSel.value = 'custom';
       document.getElementById('global-limit-custom').style.display = '';
     }
-    // hidden input already has the right value from the template
+    onGlobalLimitChange(gSel);
   }
 
   if (rSel) {
@@ -364,6 +349,7 @@ function onRotationChange(sel) {
       rSel.value = 'custom';
       document.getElementById('rotation-custom').style.display = '';
     }
+    onRotationChange(rSel);
   }
 })();
 

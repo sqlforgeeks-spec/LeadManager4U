@@ -1,11 +1,16 @@
 """
 SMTP email campaign sender.
 Features:
-  - Per-campaign daily send limit (pauses campaign when reached)
-  - Automatic SMTP rotation across multiple profiles when one hits its daily cap
+  - Global daily send limit (across all campaigns combined)
+  - Per-campaign daily send limit
+  - Automatic SMTP rotation: global pool → per-campaign extras → primary creds
+  - Per-profile daily caps trigger rotation to next profile
+  - AI variation: subtly varies subject/body per email to avoid spam filters
+  - Live template refresh: re-reads subject/body from DB every 25 sends
   - Personalised placeholder rendering
   - Background thread execution
 """
+import random
 import smtplib
 import threading
 import time
@@ -16,6 +21,8 @@ from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
+
+# ─── Placeholder rendering ────────────────────────────────────────────────────
 
 def _render_body(template, listing):
     """Simple template rendering with {placeholders}."""
@@ -32,6 +39,81 @@ def _render_body(template, listing):
         body = body.replace(placeholder, value)
     return body
 
+
+# ─── AI Variation Engine ──────────────────────────────────────────────────────
+
+_GREETINGS = [
+    "Hi", "Hello", "Hey", "Dear", "Good day",
+    "Greetings", "Hi there", "Hello there",
+]
+
+_SUBJECT_PREFIXES = [
+    "", "", "",  # no prefix most of the time
+    "Quick question — ", "Just a thought — ", "Reaching out — ",
+    "One thing — ", "A quick note — ", "Friendly nudge — ",
+]
+
+_CLOSING_LINES = [
+    "Looking forward to hearing from you.",
+    "Hope to connect soon.",
+    "Would love to chat if you're open to it.",
+    "Happy to jump on a quick call anytime.",
+    "Feel free to reply whenever you get a chance.",
+    "Let me know if this is something you'd find useful.",
+    "No pressure — just thought it was worth a mention.",
+    "Would appreciate your thoughts on this.",
+]
+
+_CONNECTORS = [
+    "I came across", "I noticed", "I found", "I discovered",
+    "I recently came across", "I stumbled upon",
+]
+
+
+def vary_subject(subject: str) -> str:
+    """Return a slightly varied version of the subject line."""
+    prefix = random.choice(_SUBJECT_PREFIXES)
+    # Occasionally lowercase first word after prefix
+    if prefix and subject:
+        return prefix + subject[0].lower() + subject[1:]
+    return prefix + subject
+
+
+def vary_body(body: str) -> str:
+    """Return a slightly varied version of the email body."""
+    lines = body.split("\n")
+    if not lines:
+        return body
+
+    # Vary the opening greeting (first line) if it starts with a known greeting
+    first_line = lines[0]
+    for greeting in sorted(_GREETINGS, key=len, reverse=True):
+        if first_line.lower().startswith(greeting.lower()):
+            new_greeting = random.choice(_GREETINGS)
+            lines[0] = new_greeting + first_line[len(greeting):]
+            break
+
+    # Vary connector phrases in the body
+    body_text = "\n".join(lines)
+    for connector in _CONNECTORS:
+        if connector.lower() in body_text.lower():
+            new_connector = random.choice(_CONNECTORS)
+            # Case-insensitive replace first occurrence
+            idx = body_text.lower().find(connector.lower())
+            body_text = body_text[:idx] + new_connector + body_text[idx + len(connector):]
+            break
+
+    # Append or swap closing line if body ends with one of our known phrases
+    for closing in _CLOSING_LINES:
+        if body_text.rstrip().endswith(closing.rstrip(".")):
+            new_closing = random.choice(_CLOSING_LINES)
+            body_text = body_text.rstrip()[: -len(closing.rstrip("."))] + new_closing
+            break
+
+    return body_text
+
+
+# ─── SMTP helpers ─────────────────────────────────────────────────────────────
 
 def _build_smtp(host, port, user, password, use_tls):
     """Open and authenticate an SMTP connection. Raises on failure."""
@@ -54,20 +136,24 @@ def _smtp_creds_from_campaign(campaign):
     return campaign.smtp_host, campaign.smtp_port, campaign.smtp_user, campaign.smtp_password, campaign.use_tls
 
 
+# ─── Main sender ──────────────────────────────────────────────────────────────
+
 def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
     """
-    Background thread target.  Sends all pending EmailSend records for a campaign.
+    Background thread target. Sends all pending EmailSend records for a campaign.
 
-    Daily-limit behaviour
-    ---------------------
-    1. If campaign.daily_limit > 0, the campaign stops after that many sends today
-       and its status is set to "paused" so the user can resume tomorrow.
-    2. Each SMTP profile (extra_smtp_profiles) has its own daily_limit.  When the
-       current profile's cap is reached the sender rotates to the next one.
-    3. If all profiles are exhausted the campaign pauses until tomorrow.
+    Limit / rotation priority:
+    1. Global daily limit (AutoConfig.global_daily_limit) — across ALL campaigns today.
+       Checked at start and every email.
+    2. Per-campaign daily limit (campaign.daily_limit) — this campaign only.
+    3. SMTP rotation order:
+         a. Campaign primary SMTP credentials (with per-profile daily cap from SmtpProfile match)
+         b. Campaign extra_smtp_profiles (with per-profile caps)
+         c. Global SMTP pool from AutoConfig.global_smtp_profiles (fallback / augment)
+    4. When all SMTP slots exhausted → campaign stops.
     """
     from django.db import close_old_connections
-    from .models import EmailCampaign, EmailSend, ContactAttempt
+    from .models import EmailCampaign, EmailSend, ContactAttempt, AutoConfig
 
     close_old_connections()
 
@@ -85,7 +171,6 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
                 return bool(should_stop_fn())
             except Exception:
                 pass
-        # Also check DB status so the Stop button works immediately
         try:
             return EmailCampaign.objects.filter(id=campaign_id, status="stopped").exists()
         except Exception:
@@ -101,21 +186,41 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
     campaign.save(update_fields=["status", "updated_at"])
     log(f"Campaign '{campaign.name}' started sending.")
 
-    # ── Build the ordered list of SMTP credentials to try ────────────────────
-    # First: the campaign's own inline credentials (always present for backward compat)
-    # Then: any extra profiles, in the order they were added
+    # ── Global config ────────────────────────────────────────────────────────
+    global_cfg = AutoConfig.get()
+    global_limit = global_cfg.global_daily_limit  # 0 = no global cap
+
+    def _count_global_sent_today():
+        """Count all emails sent today across ALL campaigns."""
+        try:
+            return EmailSend.objects.filter(
+                status="sent",
+                sent_at__date=timezone.localdate(),
+            ).count()
+        except Exception:
+            return 0
+
+    if global_limit:
+        already_sent_today = _count_global_sent_today()
+        if already_sent_today >= global_limit:
+            log(f"Global daily limit of {global_limit} already reached today ({already_sent_today} sent). Campaign stopped.", "WARNING")
+            campaign.status = "stopped"
+            campaign.save(update_fields=["status", "updated_at"])
+            return
+
+    # ── Build SMTP slot list ─────────────────────────────────────────────────
+    # Priority: primary creds → per-campaign extras → global pool
     from .models import SmtpProfile as _SmtpProfile
     smtp_slots = []
-    if campaign.smtp_user:  # inline credentials exist
-        # Try to find a matching saved SmtpProfile so we can apply its daily cap
+
+    if campaign.smtp_user:
         primary_cap = 0
         try:
             matched = _SmtpProfile.objects.filter(
-                user=campaign.smtp_user,
-                host=campaign.smtp_host,
+                user=campaign.smtp_user, host=campaign.smtp_host
             ).first()
             if matched:
-                primary_cap = matched.daily_limit  # 0 = unlimited
+                primary_cap = matched.daily_limit
         except Exception:
             pass
         smtp_slots.append({
@@ -123,12 +228,28 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
             "creds": _smtp_creds_from_campaign(campaign),
             "cap": primary_cap,
         })
+
+    # Per-campaign rotation profiles
+    seen_ids = set()
     for profile in campaign.extra_smtp_profiles.order_by("name"):
+        seen_ids.add(profile.id)
         smtp_slots.append({
             "label": profile.name,
             "creds": _smtp_creds_from_profile(profile),
-            "cap": profile.daily_limit,  # 0 = unlimited
+            "cap": profile.daily_limit,
         })
+
+    # Global SMTP pool — add profiles not already in the list
+    try:
+        for profile in global_cfg.global_smtp_profiles.order_by("name"):
+            if profile.id not in seen_ids:
+                smtp_slots.append({
+                    "label": f"[Global] {profile.name}",
+                    "creds": _smtp_creds_from_profile(profile),
+                    "cap": profile.daily_limit,
+                })
+    except Exception:
+        pass
 
     if not smtp_slots:
         log("No SMTP credentials configured for this campaign.", "ERROR")
@@ -136,9 +257,9 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
         campaign.save(update_fields=["status", "updated_at"])
         return
 
-    # ── Connect to first SMTP slot ────────────────────────────────────────────
+    # ── Connect first SMTP slot ───────────────────────────────────────────────
     slot_idx = 0
-    slot_sent = 0   # emails sent via the current slot today
+    slot_sent = 0
 
     def connect_slot(idx):
         s = smtp_slots[idx]
@@ -156,8 +277,7 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
         return
 
     pending_sends = EmailSend.objects.filter(
-        campaign=campaign,
-        status="pending",
+        campaign=campaign, status="pending"
     ).select_related("listing")
 
     total = pending_sends.count()
@@ -177,16 +297,24 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
                 log("Campaign stopped by user.")
                 break
 
-            # ── Campaign-level daily limit check ──────────────────────────────
+            # ── Global daily limit check ──────────────────────────────────────
+            if global_limit and (sent % 10 == 0):
+                total_today = _count_global_sent_today()
+                if total_today >= global_limit:
+                    log(f"Global daily limit of {global_limit} reached ({total_today} sent today across all campaigns). Stopping.", "WARNING")
+                    daily_limit_reached = True
+                    break
+
+            # ── Per-campaign daily limit check ────────────────────────────────
             if campaign_limit and campaign_sent_today >= campaign_limit:
-                log(f"Daily campaign limit of {campaign_limit} reached. Pausing until tomorrow.")
+                log(f"Campaign daily limit of {campaign_limit} reached. Stopping.")
                 daily_limit_reached = True
                 break
 
-            # ── Per-slot daily limit check / rotation ─────────────────────────
+            # ── Per-slot daily limit / rotation ───────────────────────────────
             slot_cap = smtp_slots[slot_idx]["cap"]
             if slot_cap and slot_sent >= slot_cap:
-                log(f"SMTP slot '{smtp_slots[slot_idx]['label']}' hit its {slot_cap}/day cap.")
+                log(f"SMTP '{smtp_slots[slot_idx]['label']}' hit its {slot_cap}/day cap.")
                 try:
                     smtp.quit()
                 except Exception:
@@ -194,7 +322,7 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
 
                 slot_idx += 1
                 if slot_idx >= len(smtp_slots):
-                    log("All SMTP profiles exhausted for today. Pausing campaign.", "WARNING")
+                    log("All SMTP profiles exhausted for today. Stopping campaign.", "WARNING")
                     daily_limit_reached = True
                     break
 
@@ -205,6 +333,13 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
                     log(f"Failed to connect next SMTP slot: {exc}", "ERROR")
                     daily_limit_reached = True
                     break
+
+            # ── Live template refresh (every 25 sends) ────────────────────────
+            if sent > 0 and sent % 25 == 0:
+                try:
+                    campaign.refresh_from_db(fields=["subject", "body", "ai_variation"])
+                except Exception:
+                    pass
 
             listing = send.listing
 
@@ -226,6 +361,11 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
                 body = _render_body(campaign.body, listing)
                 subject = _render_body(campaign.subject, listing)
 
+                # ── AI variation ──────────────────────────────────────────────
+                if campaign.ai_variation:
+                    subject = vary_subject(subject)
+                    body = vary_body(body)
+
                 msg = MIMEMultipart("alternative")
                 msg["Subject"] = subject
                 msg["From"] = (
@@ -245,7 +385,7 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
                 send.sent_at = timezone.now()
                 send.save(update_fields=["status", "sent_at"])
 
-                # ── Update lead lifecycle ──────────────────────────────────────
+                # ── Update lead lifecycle ─────────────────────────────────────
                 prior_email_contacts = ContactAttempt.objects.filter(
                     listing=listing, channel="email"
                 ).count()
@@ -265,7 +405,7 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
                 campaign_sent_today += 1
 
                 if sent % 10 == 0:
-                    log(f"Sent {sent}/{total} (slot: {smtp_slots[slot_idx]['label']}, slot sent today: {slot_sent})")
+                    log(f"Sent {sent}/{total} (SMTP: {smtp_slots[slot_idx]['label']}, slot cap used: {slot_sent})")
 
                 time.sleep(0.5)
 
@@ -293,7 +433,7 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
 
     if daily_limit_reached:
         campaign.status = "stopped"
-        log(f"Campaign stopped — daily send limit reached. Sent {sent}, failed {failed}, skipped {skipped}. Use 'Resend Failed' or 'Send Now' to continue tomorrow.")
+        log(f"Campaign stopped — daily limit reached. Sent {sent}, failed {failed}, skipped {skipped}. Use 'Send Now' tomorrow to continue.")
     elif check_stop():
         campaign.status = "stopped"
     else:
@@ -304,6 +444,8 @@ def send_campaign(campaign_id, log_fn=None, should_stop_fn=None):
     campaign.save(update_fields=["status", "total_sent", "total_failed", "total_skipped", "updated_at"])
     log(f"Campaign complete: {sent} sent, {failed} failed, {skipped} skipped.")
 
+
+# ─── Test email ───────────────────────────────────────────────────────────────
 
 def send_test_email(profile_id, to_email, log_fn=None):
     """

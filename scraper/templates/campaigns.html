@@ -10,6 +10,89 @@
 
 {% block content %}
 
+<!-- ── Global Send Settings ──────────────────────────────────────────────── -->
+<div class="card mb-24" style="border:2px solid var(--primary); background:var(--primary-light);">
+  <div class="card-header" style="background:transparent; border-color:#BFDBFE; cursor:pointer;" onclick="toggleGlobalSettings()">
+    <div class="card-title" style="color:var(--primary);">
+      ⚙️ Global Daily Send Limit &amp; SMTP Rotation Pool
+      {% if global_cfg.global_daily_limit %}
+        <span class="badge" style="background:#2563EB; color:#fff; margin-left:10px;">{{ global_cfg.global_daily_limit }}/day global cap</span>
+      {% endif %}
+    </div>
+    <div style="display:flex; align-items:center; gap:12px;">
+      {% if global_cfg.global_daily_limit %}
+        <span class="text-muted" style="font-size:13px;">{{ sent_today }} sent today</span>
+        <div style="width:100px; height:8px; background:#BFDBFE; border-radius:4px; overflow:hidden;">
+          <div style="height:100%; width:{% widthratio sent_today global_cfg.global_daily_limit 100 %}%; background:var(--primary); border-radius:4px;"></div>
+        </div>
+      {% endif %}
+      <span id="global-toggle-icon" style="color:var(--primary); font-size:18px;">▼</span>
+    </div>
+  </div>
+  <div id="global-settings-body" style="display:none;">
+    <form method="post" action="{% url 'campaigns' %}">
+      {% csrf_token %}
+      <div class="card-body" style="background:transparent;">
+        <div class="form-grid">
+          <div class="form-group">
+            <label class="form-label">Global Daily Limit (all campaigns combined)</label>
+            <select name="global_daily_limit" class="form-select" id="global-limit-sel">
+              <option value="0" {% if not global_cfg.global_daily_limit %}selected{% endif %}>No global limit</option>
+              <option value="100" {% if global_cfg.global_daily_limit == 100 %}selected{% endif %}>100 / day</option>
+              <option value="200" {% if global_cfg.global_daily_limit == 200 %}selected{% endif %}>200 / day</option>
+              <option value="300" {% if global_cfg.global_daily_limit == 300 %}selected{% endif %}>300 / day</option>
+              <option value="600" {% if global_cfg.global_daily_limit == 600 %}selected{% endif %}>600 / day</option>
+              <option value="900" {% if global_cfg.global_daily_limit == 900 %}selected{% endif %}>900 / day</option>
+              <option value="1200" {% if global_cfg.global_daily_limit == 1200 %}selected{% endif %}>1200 / day</option>
+              <option value="custom" id="global-limit-custom-opt">Custom…</option>
+            </select>
+            <input type="number" name="global_daily_limit_custom" id="global-limit-custom" class="form-input mt-8"
+              placeholder="Enter custom limit" style="display:none;" min="1"
+              value="{{ global_cfg.global_daily_limit }}">
+            <div class="form-hint">
+              One cap covering every campaign together. E.g. set 600 here, add 2 SMTP profiles at 300 each — both profiles get used automatically.
+              Today: <strong>{{ sent_today }}</strong> emails sent across all campaigns.
+            </div>
+          </div>
+
+          {% if smtp_profiles %}
+          <div class="form-group full">
+            <label class="form-label">Global SMTP Rotation Pool</label>
+            <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(230px,1fr)); gap:8px; margin-top:6px;">
+              {% for p in smtp_profiles %}
+              <label class="form-check" style="padding:10px 14px; border:1px solid {% if p.id in global_smtp_selected %}var(--primary){% else %}var(--border){% endif %}; border-radius:8px; cursor:pointer; background:{% if p.id in global_smtp_selected %}var(--primary-light){% else %}#fff{% endif %}; transition:.15s;">
+                <input type="checkbox" name="global_smtp_profiles" value="{{ p.id }}"
+                  {% if p.id in global_smtp_selected %}checked{% endif %}>
+                <span>
+                  <strong>{{ p.name }}</strong><br>
+                  <small class="text-muted font-mono">{{ p.user }}</small><br>
+                  <small class="text-muted">Limit: {% if p.daily_limit %}{{ p.daily_limit }}/day{% else %}Unlimited{% endif %}</small>
+                </span>
+              </label>
+              {% endfor %}
+            </div>
+            <div class="form-hint mt-8">
+              These SMTP accounts are available to <strong>every campaign</strong> for rotation. When one hits its daily cap, the campaign auto-switches to the next one. You don't need to configure SMTP on each campaign separately.
+            </div>
+          </div>
+          {% else %}
+          <div class="form-group">
+            <label class="form-label">Global SMTP Pool</label>
+            <div class="form-hint">
+              <a href="{% url 'smtp_profiles' %}" class="text-primary">Add SMTP profiles</a> first, then assign them to the global pool here.
+            </div>
+          </div>
+          {% endif %}
+        </div>
+        <div class="flex gap-12 mt-16">
+          <button type="submit" class="btn btn-primary">💾 Save Global Settings</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Campaign List ─────────────────────────────────────────────────────── -->
 {% if campaigns %}
 <div class="card">
   <div class="card-header">
@@ -22,7 +105,7 @@
         <tr>
           <th>#</th><th>Name</th><th>Status</th><th>Subject</th>
           <th>Targets</th><th>Sent</th><th>Failed</th>
-          <th>Daily Limit</th><th>Scheduled</th><th>Actions</th>
+          <th>AI Vary</th><th>Scheduled</th><th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -31,14 +114,16 @@
           <td class="text-muted font-mono">#{{ campaign.id }}</td>
           <td><strong>{{ campaign.name }}</strong></td>
           <td><span class="badge badge-{{ campaign.status }}">{{ campaign.get_status_display }}</span></td>
-          <td><span class="truncate" title="{{ campaign.subject }}" style="max-width:180px;">{{ campaign.subject }}</span></td>
+          <td><span class="truncate" title="{{ campaign.subject }}" style="max-width:170px;">{{ campaign.subject }}</span></td>
           <td>{{ campaign.total_targets }}</td>
           <td class="text-success">{{ campaign.total_sent }}</td>
           <td class="text-danger">{{ campaign.total_failed }}</td>
-          <td class="text-muted" style="font-size:12px;">
-            {% if campaign.daily_limit %}
-              <span class="badge badge-queued">{{ campaign.daily_limit }}/day</span>
-            {% else %}—{% endif %}
+          <td>
+            {% if campaign.ai_variation %}
+              <span class="badge" style="background:#F5F3FF; color:#7C3AED;">✨ On</span>
+            {% else %}
+              <span class="text-muted" style="font-size:12px;">—</span>
+            {% endif %}
           </td>
           <td class="text-muted" style="font-size:12px;">
             {% if campaign.scheduled_at %}⏰ {{ campaign.scheduled_at|date:"M j H:i" }}{% else %}—{% endif %}
@@ -84,4 +169,38 @@
 </div>
 {% endif %}
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _globalOpen = {% if global_cfg.global_daily_limit or global_smtp_selected %}true{% else %}false{% endif %};
+function toggleGlobalSettings() {
+  const body = document.getElementById('global-settings-body');
+  const icon = document.getElementById('global-toggle-icon');
+  _globalOpen = !_globalOpen;
+  body.style.display = _globalOpen ? '' : 'none';
+  icon.textContent = _globalOpen ? '▲' : '▼';
+}
+// Auto-open if already configured
+if (_globalOpen) document.getElementById('global-settings-body').style.display = '';
+
+// Custom global limit
+const glSel = document.getElementById('global-limit-sel');
+const glCustom = document.getElementById('global-limit-custom');
+if (glSel && glCustom) {
+  // If current value doesn't match any option, select "custom"
+  const opts = [...glSel.options].map(o => o.value);
+  const cur = '{{ global_cfg.global_daily_limit }}';
+  if (cur && cur !== '0' && !opts.includes(cur)) {
+    glSel.value = 'custom';
+    glCustom.style.display = '';
+  }
+  glSel.addEventListener('change', () => {
+    glCustom.style.display = glSel.value === 'custom' ? '' : 'none';
+    glCustom.required = glSel.value === 'custom';
+    if (glSel.value !== 'custom') glCustom.name = '';
+    else glCustom.name = 'global_daily_limit';
+  });
+}
+</script>
 {% endblock %}

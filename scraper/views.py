@@ -1862,15 +1862,67 @@ def api_smtp_profile(request, profile_id):
 # ─── Email Campaigns ──────────────────────────────────────────────────────────
 
 def campaigns(request):
+    from .models import AutoConfig
+    global_cfg = AutoConfig.get()
+
+    if request.method == "POST":
+        # Save global daily limit + global SMTP pool
+        try:
+            global_cfg.global_daily_limit = max(0, int(request.POST.get("global_daily_limit", "0")))
+        except ValueError:
+            pass
+        profile_ids = request.POST.getlist("global_smtp_profiles")
+        try:
+            ids = [int(x) for x in profile_ids if x.isdigit()]
+            global_cfg.global_smtp_profiles.set(SmtpProfile.objects.filter(id__in=ids))
+        except Exception:
+            pass
+        global_cfg.save(update_fields=["global_daily_limit", "updated_at"])
+        return redirect("campaigns")
+
+    # Count today's total sends for global limit display
+    from django.utils import timezone as tz
+    sent_today = EmailSend.objects.filter(
+        status="sent", sent_at__date=tz.localdate()
+    ).count()
+
     campaign_list = EmailCampaign.objects.order_by("-created_at")
     smtp_profiles_qs = SmtpProfile.objects.all()
     return render(request, "campaigns.html", {
         "campaigns": campaign_list,
         "smtp_profiles": smtp_profiles_qs,
+        "global_cfg": global_cfg,
+        "global_smtp_selected": set(global_cfg.global_smtp_profiles.values_list("id", flat=True)),
+        "sent_today": sent_today,
         "global_stats": _global_stats(),
         "notifications": _get_notifications(),
         "active_page": "campaigns",
     })
+
+
+@require_POST
+def update_campaign_template(request, campaign_id):
+    """Update subject/body on a campaign — allowed even while sending."""
+    campaign = get_object_or_404(EmailCampaign, id=campaign_id)
+    subject = request.POST.get("subject", "").strip()
+    body = request.POST.get("body", "").strip()
+    if subject:
+        campaign.subject = subject
+    if body:
+        campaign.body = body
+    campaign.save(update_fields=["subject", "body", "updated_at"])
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.POST.get("ajax"):
+        return JsonResponse({"ok": True, "msg": "Template updated. Changes apply to next batch."})
+    return redirect("campaign_detail", campaign_id=campaign_id)
+
+
+@require_POST
+def toggle_ai_variation(request, campaign_id):
+    """Toggle AI variation on/off for a campaign."""
+    campaign = get_object_or_404(EmailCampaign, id=campaign_id)
+    campaign.ai_variation = not campaign.ai_variation
+    campaign.save(update_fields=["ai_variation", "updated_at"])
+    return JsonResponse({"ok": True, "ai_variation": campaign.ai_variation})
 
 
 def new_campaign(request):

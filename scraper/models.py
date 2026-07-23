@@ -253,6 +253,11 @@ class EmailCampaign(models.Model):
         "SmtpProfile", blank=True, related_name="campaigns",
         help_text="Additional SMTP accounts for automatic rotation when one hits its daily limit."
     )
+    # AI variation: slightly vary subject/body per email to avoid spam filters
+    ai_variation = models.BooleanField(
+        default=False,
+        help_text="When enabled, subtly varies the subject line and opening line of each email to avoid spam detection."
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -294,6 +299,18 @@ class EmailSend(models.Model):
 
 class AutoConfig(models.Model):
     """Singleton-style table for global auto-mode settings."""
+
+    # ── Global send limits ────────────────────────────────────────────────────
+    global_daily_limit = models.PositiveIntegerField(
+        default=0,
+        help_text="Maximum emails sent per day across ALL campaigns combined. 0 = no global cap.",
+    )
+    global_smtp_profiles = models.ManyToManyField(
+        "SmtpProfile", blank=True,
+        related_name="global_auto_configs",
+        help_text="Global SMTP rotation pool — any campaign without its own extra profiles will use these.",
+    )
+
     # Auto-scrape
     auto_scrape_enabled = models.BooleanField(default=False)
     auto_scrape_phrase = models.CharField(max_length=255, blank=True, default="")

@@ -25,7 +25,7 @@
 
 {% block content %}
 
-<!-- Status + progress -->
+<!-- Status bar -->
 <div class="flex items-center gap-12 mb-24" style="flex-wrap:wrap;">
   <span class="badge badge-{{ campaign.status }}" style="font-size:13px; padding:6px 14px;">{{ campaign.get_status_display }}</span>
   {% if campaign.status == "sending" %}<span class="badge badge-live">Sending…</span>{% endif %}
@@ -35,8 +35,12 @@
   {% if campaign.daily_limit %}
     <span class="badge" style="background:var(--warning-light); color:var(--warning);">⏱ {{ campaign.daily_limit }}/day limit</span>
   {% endif %}
+  <span id="ai-badge" class="badge" style="background:{% if campaign.ai_variation %}#F5F3FF{% else %}#F1F5F9{% endif %}; color:{% if campaign.ai_variation %}#7C3AED{% else %}var(--text-muted){% endif %}; cursor:pointer;" onclick="toggleAiVariation()">
+    ✨ AI Variation: <strong id="ai-badge-text">{% if campaign.ai_variation %}ON{% else %}OFF{% endif %}</strong>
+  </span>
 </div>
 
+<!-- Stats -->
 <div class="stats-grid mb-24">
   <div class="stat-card">
     <div class="stat-icon blue">🎯</div>
@@ -67,12 +71,11 @@
 </div>
 {% endif %}
 
-<!-- Resend + Schedule actions -->
-{% if campaign.status in "draft,failed,stopped,sent" %}
+<!-- ── Actions ────────────────────────────────────────────────────────────── -->
 <div class="card mb-24">
   <div class="card-header"><div class="card-title">⚡ Actions</div></div>
   <div class="card-body">
-    <div class="flex gap-12" style="flex-wrap:wrap; align-items:flex-start;">
+    <div class="flex gap-16" style="flex-wrap:wrap; align-items:flex-start;">
 
       <!-- Resend -->
       <div>
@@ -89,34 +92,105 @@
             <button type="submit" class="btn btn-ghost btn-sm">↻ Resend All</button>
           </form>
         </div>
-        <div class="form-hint">Resend failed resets failed/skipped; Resend all resets every recipient.</div>
+        <div class="form-hint">Resend failed — resets failed/skipped. Resend all — resets every recipient.</div>
       </div>
 
       <!-- Schedule -->
-      {% if campaign.status != "scheduled" %}
       <div>
+        {% if campaign.status != "scheduled" %}
         <div class="form-label mb-4">Schedule Send</div>
         <form method="post" action="{% url 'schedule_campaign' campaign.id %}" class="flex gap-8" style="align-items:center;">
           {% csrf_token %}
-          <input type="datetime-local" name="scheduled_at" class="form-input" style="max-width:220px;" required>
+          <input type="datetime-local" name="scheduled_at" class="form-input" style="max-width:210px;" required>
           <button type="submit" class="btn btn-primary btn-sm">⏰ Schedule</button>
         </form>
-        <div class="form-hint">Campaign will send automatically at the chosen time.</div>
-      </div>
-      {% else %}
-      <div>
+        <div class="form-hint">Sends automatically at the chosen date/time.</div>
+        {% else %}
         <div class="form-label mb-4">Scheduled Send</div>
         <div class="flex gap-8 items-center">
           <span class="text-muted">{{ campaign.scheduled_at|date:"M j, Y H:i" }}</span>
-          <form method="post" action="{% url 'unschedule_campaign' campaign.id %}">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">Cancel Schedule</button></form>
+          <form method="post" action="{% url 'unschedule_campaign' campaign.id %}">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">Cancel</button></form>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- ✨ AI Variation toggle -->
+      <div>
+        <div class="form-label mb-4">✨ AI Email Variation</div>
+        <div style="padding:12px 16px; border:2px solid {% if campaign.ai_variation %}#8B5CF6{% else %}var(--border){% endif %}; border-radius:10px; background:{% if campaign.ai_variation %}#F5F3FF{% else %}#FAFAFA{% endif %}; min-width:240px; transition:.2s;" id="ai-variation-card">
+          <div class="flex items-center gap-12" style="margin-bottom:8px;">
+            <div style="flex:1;">
+              <strong style="font-size:13px; color:{% if campaign.ai_variation %}#7C3AED{% else %}var(--text){% endif %}">
+                AI Variation: <span id="ai-status-text">{% if campaign.ai_variation %}ON{% else %}OFF{% endif %}</span>
+              </strong>
+            </div>
+            <button type="button" id="ai-toggle-btn" onclick="toggleAiVariation()"
+              class="btn btn-sm"
+              style="background:{% if campaign.ai_variation %}#8B5CF6{% else %}var(--border){% endif %}; color:{% if campaign.ai_variation %}#fff{% else %}var(--text-muted){% endif %}; border:none; min-width:54px; transition:.2s;">
+              {% if campaign.ai_variation %}ON{% else %}OFF{% endif %}
+            </button>
+          </div>
+          <div style="font-size:12px; color:var(--text-muted); line-height:1.5;">
+            When ON, each email gets a slightly different subject line and opening sentence — helps avoid Gmail/SMTP spam detection when sending bulk.
+          </div>
         </div>
       </div>
-      {% endif %}
 
     </div>
   </div>
 </div>
-{% endif %}
+
+<!-- ── Live Template Editor ───────────────────────────────────────────────── -->
+<div class="card mb-24" style="border:2px solid {% if campaign.status == 'sending' %}#10B981{% else %}var(--border){% endif %};">
+  <div class="card-header" style="cursor:pointer;" onclick="toggleTemplateEditor()">
+    <div class="card-title">
+      ✏️ Edit Email Template
+      {% if campaign.status == "sending" %}
+        <span class="badge badge-live" style="margin-left:8px; font-size:11px;">Live — changes apply to next batch</span>
+      {% endif %}
+    </div>
+    <span id="tpl-toggle-icon" style="color:var(--text-muted); font-size:18px;">▼</span>
+  </div>
+  <div id="tpl-editor-body" style="display:none;">
+    <div class="card-body">
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">
+        You can update the subject and body at any time — even while the campaign is sending. Changes take effect within the next 25 emails.
+      </p>
+
+      <!-- Load saved template -->
+      {% if saved_templates %}
+      <div class="form-group mb-16">
+        <label class="form-label">Load a saved template</label>
+        <select id="saved-tpl-sel" class="form-select" style="max-width:360px;" onchange="loadSavedTemplate(this)">
+          <option value="">— select to load —</option>
+          {% for t in saved_templates %}
+          <option value="{{ t.id }}" data-subject="{{ t.subject|escapejs }}" data-body="{{ t.body|escapejs }}">
+            {{ t.name }}{% if t.industry %} ({{ t.industry }}){% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+
+      <div id="tpl-result" style="display:none; padding:10px 14px; border-radius:8px; font-size:13px; margin-bottom:14px;"></div>
+
+      <div class="form-group">
+        <label class="form-label">Subject</label>
+        <input type="text" id="edit-subject" class="form-input" value="{{ campaign.subject|escapejs }}">
+      </div>
+      <div class="form-group mt-12">
+        <label class="form-label">Body</label>
+        <textarea id="edit-body" class="form-textarea" rows="10">{{ campaign.body }}</textarea>
+        <div class="form-hint">Placeholders: {name} {email} {phone} {website} {location} {address}</div>
+      </div>
+      <div class="flex gap-8 mt-16">
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveTemplate()">💾 Save Changes</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="saveAsNewTemplate()">📁 Save as New Template</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="toggleTemplateEditor()">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Campaign info -->
 <div class="card mb-24">
@@ -130,9 +204,9 @@
         <div class="meta-label">Daily Limit</div>
         <div class="meta-value">
           {% if campaign.daily_limit %}
-            <span class="badge" style="background:var(--warning-light); color:var(--warning);">{{ campaign.daily_limit }} emails/day</span>
+            <span class="badge" style="background:var(--warning-light); color:var(--warning);">{{ campaign.daily_limit }}/day</span>
           {% else %}
-            <span class="text-muted">Unlimited</span>
+            <span class="text-muted">Uses global cap (or unlimited)</span>
           {% endif %}
         </div>
       </div>
@@ -143,7 +217,7 @@
     {% with extra=campaign.extra_smtp_profiles.all %}
     {% if extra %}
     <div class="mt-16">
-      <div class="form-label mb-4">SMTP Rotation Profiles</div>
+      <div class="form-label mb-4">SMTP Rotation Profiles (this campaign)</div>
       <div class="flex gap-8" style="flex-wrap:wrap;">
         {% for p in extra %}
         <span class="badge badge-queued" style="font-size:12px; padding:4px 10px;">
@@ -151,18 +225,18 @@
         </span>
         {% endfor %}
       </div>
-      <div class="form-hint mt-4">Campaign auto-rotates through these when the primary SMTP hits its daily cap.</div>
+      <div class="form-hint mt-4">Auto-rotates when the primary SMTP hits its cap.</div>
     </div>
     {% endif %}
     {% endwith %}
 
     <div class="mt-16">
       <div class="form-label mb-4">Subject</div>
-      <div class="body-preview">{{ campaign.subject }}</div>
+      <div class="body-preview" id="preview-subject">{{ campaign.subject }}</div>
     </div>
     <div class="mt-16">
       <div class="form-label mb-4">Body Preview</div>
-      <div class="body-preview">{{ campaign.body }}</div>
+      <div class="body-preview" id="preview-body">{{ campaign.body }}</div>
     </div>
   </div>
 </div>
@@ -197,7 +271,9 @@
             {% else %}<span class="badge badge-queued">Pending</span>{% endif %}
           </td>
           <td class="text-muted">{{ send.sent_at|date:"H:i:s"|default:"—" }}</td>
-          <td class="text-danger" style="font-size:12px; max-width:180px;">{% if send.error %}<span class="truncate" title="{{ send.error }}">{{ send.error }}</span>{% else %}—{% endif %}</td>
+          <td class="text-danger" style="font-size:12px; max-width:180px;">
+            {% if send.error %}<span class="truncate" title="{{ send.error }}">{{ send.error }}</span>{% else %}—{% endif %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -217,9 +293,114 @@
 {% endblock %}
 
 {% block scripts %}
-{% if campaign.status == "sending" %}
 <script>
-  setTimeout(() => window.location.reload(), 8000);
-</script>
+const CAMPAIGN_ID = {{ campaign.id }};
+const CSRF = '{{ csrf_token }}';
+
+// ── Auto-reload while sending ─────────────────────────────────────────────
+{% if campaign.status == "sending" %}
+setTimeout(() => window.location.reload(), 8000);
 {% endif %}
+
+// ── Template Editor ───────────────────────────────────────────────────────
+let _tplOpen = false;
+function toggleTemplateEditor() {
+  _tplOpen = !_tplOpen;
+  document.getElementById('tpl-editor-body').style.display = _tplOpen ? '' : 'none';
+  document.getElementById('tpl-toggle-icon').textContent = _tplOpen ? '▲' : '▼';
+}
+
+function loadSavedTemplate(sel) {
+  const opt = sel.options[sel.selectedIndex];
+  if (!opt.value) return;
+  document.getElementById('edit-subject').value = opt.dataset.subject || '';
+  document.getElementById('edit-body').value = opt.dataset.body || '';
+  sel.selectedIndex = 0;
+}
+
+function saveTemplate() {
+  const subject = document.getElementById('edit-subject').value.trim();
+  const body = document.getElementById('edit-body').value.trim();
+  const resultEl = document.getElementById('tpl-result');
+  if (!subject || !body) {
+    showTplResult(false, 'Subject and body cannot be empty.');
+    return;
+  }
+  const fd = new FormData();
+  fd.append('csrfmiddlewaretoken', CSRF);
+  fd.append('subject', subject);
+  fd.append('body', body);
+  fd.append('ajax', '1');
+  fetch(`/campaigns/${CAMPAIGN_ID}/update-template/`, { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      showTplResult(data.ok, data.msg);
+      if (data.ok) {
+        // Update preview section
+        document.getElementById('preview-subject').textContent = subject;
+        document.getElementById('preview-body').textContent = body;
+      }
+    })
+    .catch(() => showTplResult(false, 'Network error.'));
+}
+
+function saveAsNewTemplate() {
+  const subject = document.getElementById('edit-subject').value.trim();
+  const body = document.getElementById('edit-body').value.trim();
+  if (!subject || !body) { showTplResult(false, 'Fill in subject and body first.'); return; }
+  const name = prompt('Name for this template:');
+  if (!name) return;
+  fetch('/api/email-templates/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+    body: JSON.stringify({ name, subject, body, industry: '' }),
+  })
+    .then(r => r.json())
+    .then(data => showTplResult(data.ok, data.ok ? `✅ Saved "${data.name}" to templates.` : (data.msg || 'Save failed.')))
+    .catch(() => showTplResult(false, 'Network error.'));
+}
+
+function showTplResult(ok, msg) {
+  const el = document.getElementById('tpl-result');
+  el.style.display = 'block';
+  el.style.background = ok ? 'var(--success-light)' : 'var(--danger-light)';
+  el.style.color = ok ? 'var(--success)' : 'var(--danger)';
+  el.textContent = msg;
+  if (ok) setTimeout(() => { el.style.display = 'none'; }, 3000);
+}
+
+// ── AI Variation toggle ───────────────────────────────────────────────────
+let _aiOn = {{ campaign.ai_variation|yesno:"true,false" }};
+
+function toggleAiVariation() {
+  const btn = document.getElementById('ai-toggle-btn');
+  const statusText = document.getElementById('ai-status-text');
+  const badge = document.getElementById('ai-badge');
+  const badgeText = document.getElementById('ai-badge-text');
+  const card = document.getElementById('ai-variation-card');
+
+  btn.disabled = true;
+  btn.textContent = '…';
+
+  const fd = new FormData();
+  fd.append('csrfmiddlewaretoken', CSRF);
+  fetch(`/campaigns/${CAMPAIGN_ID}/toggle-ai-variation/`, { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      btn.disabled = false;
+      _aiOn = data.ai_variation;
+      const onStr = _aiOn ? 'ON' : 'OFF';
+      btn.textContent = onStr;
+      statusText.textContent = onStr;
+      badgeText.textContent = onStr;
+      btn.style.background = _aiOn ? '#8B5CF6' : 'var(--border)';
+      btn.style.color = _aiOn ? '#fff' : 'var(--text-muted)';
+      card.style.borderColor = _aiOn ? '#8B5CF6' : 'var(--border)';
+      card.style.background = _aiOn ? '#F5F3FF' : '#FAFAFA';
+      badge.style.background = _aiOn ? '#F5F3FF' : '#F1F5F9';
+      badge.style.color = _aiOn ? '#7C3AED' : 'var(--text-muted)';
+    })
+    .catch(() => { btn.disabled = false; btn.textContent = _aiOn ? 'ON' : 'OFF'; });
+}
+</script>
 {% endblock %}

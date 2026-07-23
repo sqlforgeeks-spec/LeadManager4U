@@ -41,6 +41,8 @@ urlpatterns = [
     path('campaigns/<int:campaign_id>/schedule/', views.schedule_campaign, name='schedule_campaign'),
     path('campaigns/<int:campaign_id>/unschedule/', views.unschedule_campaign, name='unschedule_campaign'),
     path('campaigns/<int:campaign_id>/delete/', views.delete_campaign, name='delete_campaign'),
+    path('campaigns/<int:campaign_id>/update-template/', views.update_campaign_template, name='update_campaign_template'),
+    path('campaigns/<int:campaign_id>/toggle-ai-variation/', views.toggle_ai_variation, name='toggle_ai_variation'),
 
     # SMTP Profiles
     path('smtp/', views.smtp_profiles, name='smtp_profiles'),

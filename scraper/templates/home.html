@@ -249,6 +249,31 @@
     </div>
     {% endif %}
 
+    <!-- Follow-up Campaign Reminders -->
+    {% if followup_campaign_reminders %}
+    <div class="card mb-24">
+      <div class="card-header">
+        <div class="card-title">🔁 Follow-up Campaign Reminders</div>
+        <a href="{% url 'campaigns' %}" class="btn btn-ghost btn-sm">All Campaigns</a>
+      </div>
+      <div style="padding:4px 0;">
+        {% for rem in followup_campaign_reminders %}
+        <div class="fu-campaign-row">
+          <div class="fu-campaign-icon">{{ rem.icon }}</div>
+          <div style="flex:1;min-width:0;overflow:hidden;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span class="fu-campaign-badge {{ rem.badge_class }}">{{ rem.badge }}</span>
+              <span class="fu-campaign-name">{{ rem.campaign_name }}</span>
+            </div>
+            <div class="fu-campaign-desc">{{ rem.desc }}</div>
+          </div>
+          <a href="{{ rem.action_url }}" class="btn btn-primary btn-sm" style="flex-shrink:0;white-space:nowrap;" onclick="return confirm('Send follow-up for campaign: {{ rem.campaign_name }}?')">{{ rem.action_label }}</a>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
     <!-- Campaign Recommendations -->
     <div class="card mb-24">
       <div class="card-header">

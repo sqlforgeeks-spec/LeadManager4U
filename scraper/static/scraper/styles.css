@@ -1499,14 +1499,18 @@ html, body { overflow-x: hidden; }
 /* ── Dashboard two-column grid ───────────────────────────────────────────── */
 .dash-grid {
   display: grid;
-  grid-template-columns: 1fr 400px;
+  grid-template-columns: 1fr minmax(0, 380px);
   gap: 20px;
   align-items: start;
+  min-width: 0;
 }
-@media (max-width: 1100px) {
+@media (max-width: 1180px) {
+  .dash-grid { grid-template-columns: 1fr minmax(0, 340px); }
+}
+@media (max-width: 1024px) {
   .dash-grid { grid-template-columns: 1fr; }
 }
-.dash-col { display: flex; flex-direction: column; }
+.dash-col { display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
 
 /* ── Connect today rows ──────────────────────────────────────────────────── */
 .connect-row {
@@ -1517,24 +1521,26 @@ html, body { overflow-x: hidden; }
   border-bottom: 1px solid #f1f5f9;
   cursor: pointer;
   transition: background 0.12s;
+  min-width: 0;
+  overflow: hidden;
 }
 .connect-row:last-child { border-bottom: none; }
 .connect-row:hover { background: #f8fafc; }
 .connect-score {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   flex-shrink: 0;
 }
 .score-high { background: #dcfce7; color: #15803d; }
 .score-mid  { background: #fef9c3; color: #92400e; }
 .score-low  { background: #f1f5f9; color: #64748b; }
-.connect-info { flex: 1; min-width: 0; }
+.connect-info { flex: 1; min-width: 0; overflow: hidden; }
 .connect-name {
   font-weight: 600;
   font-size: 13px;
@@ -1545,6 +1551,7 @@ html, body { overflow-x: hidden; }
   display: flex;
   align-items: center;
   gap: 6px;
+  max-width: 100%;
 }
 .connect-meta {
   font-size: 11px;
@@ -1553,14 +1560,18 @@ html, body { overflow-x: hidden; }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 100%;
 }
 .connect-status {
   font-size: 10px;
   font-weight: 600;
-  padding: 2px 7px;
+  padding: 2px 6px;
   border-radius: 10px;
   white-space: nowrap;
   flex-shrink: 0;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .status-fresh        { background: #f1f5f9; color: #64748b; }
 .status-following_up { background: #eff6ff; color: #2563eb; }
@@ -1596,6 +1607,53 @@ html, body { overflow-x: hidden; }
 .login-form { display:flex; flex-direction:column; gap:8px; }
 .login-form .form-label:not(:first-child) { margin-top:10px; }
 .login-form .btn { justify-content:center; margin-top:16px; }
+
+/* ── Follow-up campaign reminder rows ───────────────────────────────────── */
+.fu-campaign-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  min-width: 0;
+  overflow: hidden;
+}
+.fu-campaign-row:last-child { border-bottom: none; }
+.fu-campaign-icon { font-size: 20px; flex-shrink: 0; width: 32px; text-align: center; }
+.fu-campaign-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.fu-badge-today { background: #fef9c3; color: #92400e; }
+.fu-badge-week  { background: #dbeafe; color: #1d4ed8; }
+.fu-badge-final { background: #f3e8ff; color: #7c3aed; }
+.fu-campaign-name {
+  font-weight: 600;
+  font-size: 12px;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+.fu-campaign-desc {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+:root[data-theme="dark"] .fu-campaign-row { border-color: #263449; }
+:root[data-theme="dark"] .fu-campaign-name { color: #E5E7EB; }
+:root[data-theme="dark"] .fu-campaign-desc { color: #94A3B8; }
+:root[data-theme="dark"] .fu-badge-today { background: #33230A; color: #FDE68A; }
+:root[data-theme="dark"] .fu-badge-week  { background: #172554; color: #93C5FD; }
+:root[data-theme="dark"] .fu-badge-final { background: #241442; color: #C4B5FD; }
 
 /* ── Campaign suggestion rows ────────────────────────────────────────────── */
 .campaign-suggest-row {

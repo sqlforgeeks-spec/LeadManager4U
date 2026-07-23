@@ -652,7 +652,7 @@ ENGINE_CONFIG = {
         "fetch": _fetch_google_page,
         "parse_web": _parse_google_results,
         "parse_images": _parse_google_images_results,
-        "per_page": 10,
+        "per_page": 20,
         "delay": (3.0, 6.0),
         "captcha_wait": (45, 90),
     },
@@ -660,7 +660,7 @@ ENGINE_CONFIG = {
         "fetch": _fetch_bing_page,
         "parse_web": _parse_bing_results,
         "parse_images": _parse_bing_images_results,
-        "per_page": 10,
+        "per_page": 50,
         "delay": (1.5, 3.5),
         "captcha_wait": (20, 40),
     },
@@ -871,9 +871,18 @@ def scrape_search_engine(
 
         log(f"[{engine.upper()}] Page {page + 1}: +{new_count} results (total {len(serp_results)})")
 
+        # Only stop after 2 consecutive empty pages (not just one), so a
+        # single dud page doesn't end the run prematurely.
         if new_count == 0 and page > 0:
-            log(f"[{engine.upper()}] No new results. Stopping pagination.")
-            break
+            consecutive_empty = getattr(scrape_search_engine, '_consecutive_empty', 0) + 1
+            scrape_search_engine._consecutive_empty = consecutive_empty
+            if consecutive_empty >= 2:
+                log(f"[{engine.upper()}] {consecutive_empty} consecutive empty pages. Stopping pagination.")
+                scrape_search_engine._consecutive_empty = 0
+                break
+            log(f"[{engine.upper()}] Empty page ({consecutive_empty}/2), trying one more…")
+        else:
+            scrape_search_engine._consecutive_empty = 0
 
         # Human-like delay between pages
         base_delay = cfg.get("delay", (2.0, 4.0))

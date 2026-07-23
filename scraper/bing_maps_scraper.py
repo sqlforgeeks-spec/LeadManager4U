@@ -532,7 +532,8 @@ def scrape_bing_maps(
         collected_items = []
         seen_names = set()
         scroll_attempts = 0
-        max_scroll_attempts = max(60, min(800, max_results * 4))
+        no_new_rounds = 0
+        max_scroll_attempts = max(120, min(800, max_results * 6))
 
         while len(collected_items) < max_results and scroll_attempts < max_scroll_attempts:
             if _should_stop(should_stop_fn):
@@ -566,6 +567,11 @@ def scrape_bing_maps(
                 except Exception:
                     continue
 
+            if new_found > 0:
+                no_new_rounds = 0
+            else:
+                no_new_rounds += 1
+
             if len(collected_items) >= max_results:
                 break
 
@@ -590,19 +596,50 @@ def scrape_bing_maps(
             # Check if no new items loaded (end of list)
             new_items_after = _find_result_items(driver)
             if len(new_items_after) <= len(items) and scroll_attempts > 5:
-                # Try clicking "Show more" or similar buttons
+                # Try multiple scroll strategies to load more results
                 more_loaded = False
-                for more_sel in ["button.more", "a.more", "button[aria-label*='more']", "#see_more"]:
+
+                # Strategy 1: Try "Show more" / "Load more" buttons
+                for more_sel in [
+                    "button.more", "a.more", "button[aria-label*='more']", "#see_more",
+                    "button[aria-label*='More results']", "a.b_moretxt",
+                    "div.b_pag a[aria-label*='Next']",
+                ]:
                     try:
                         btn = driver.find_element(By.CSS_SELECTOR, more_sel)
                         driver.execute_script("arguments[0].click();", btn)
-                        time.sleep(1.5)
+                        time.sleep(2.0)
                         more_loaded = True
                         break
                     except Exception:
                         pass
-                if not more_loaded and scroll_attempts > 20:
-                    log(f"[BingMaps] End of results. Collected {len(collected_items)} listings.")
+
+                # Strategy 2: Scroll the window itself (some Bing Maps layouts use window scroll)
+                if not more_loaded and scroll_attempts % 3 == 0:
+                    try:
+                        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                        time.sleep(1.0)
+                        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                        time.sleep(0.5)
+                        more_loaded = True
+                    except Exception:
+                        pass
+
+                # Strategy 3: Scroll back up then down to trigger lazy load
+                if not more_loaded and no_new_rounds > 0 and no_new_rounds % 5 == 0:
+                    try:
+                        container, _ = _find_result_container(driver)
+                        if container:
+                            driver.execute_script("arguments[0].scrollTop = 0;", container)
+                            time.sleep(0.4)
+                            driver.execute_script("arguments[0].scrollTop = arguments[0].scrollHeight;", container)
+                            time.sleep(1.0)
+                    except Exception:
+                        pass
+
+                # Give up only after a generous number of attempts
+                if not more_loaded and scroll_attempts > 40:
+                    log(f"[BingMaps] End of results after {scroll_attempts} scroll attempts. Collected {len(collected_items)} listings.")
                     break
 
         log(f"[BingMaps] Collected {len(collected_items)} unique businesses. Enriching contact details...")

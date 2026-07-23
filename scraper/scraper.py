@@ -658,8 +658,8 @@ def scrape_google_maps(
         place_summaries = []
         seen_keys = set(seed_seen or [])
         no_new_rounds = 0
-        max_no_new_rounds = 8
-        max_scrolls = max(120, min(1200, max_results * 3))
+        max_no_new_rounds = 18  # was 8 — more patience before giving up
+        max_scrolls = max(200, min(1200, max_results * 5))
         selector = _pick_card_selector(driver)
         detail_queue = queue.Queue(maxsize=speed_cfg["queue_limit"])
         prefetch_queue = queue.Queue(maxsize=speed_cfg["queue_limit"])
@@ -889,7 +889,7 @@ def scrape_google_maps(
                 else:
                     no_new_rounds = 0
 
-                if end_detected and no_new_rounds >= 2:
+                if end_detected and no_new_rounds >= 5:
                     log.write("End of list detected. Stopping scroll.")
                     break
 
@@ -900,6 +900,17 @@ def scrape_google_maps(
                 prev_count = _count_cards(driver, selector)
                 log.write(f"Scrolling results panel... (pass {scroll_index + 1})")
                 try:
+                    # Alternate scroll strategy: every 4th stalled round scroll back up
+                    # then back down to trigger Google's lazy-load re-render.
+                    if no_new_rounds > 0 and no_new_rounds % 4 == 0:
+                        try:
+                            driver.execute_script(
+                                "arguments[0].scrollTop = Math.max(0, arguments[0].scrollTop - 800);",
+                                feed,
+                            )
+                            time.sleep(random.uniform(0.4, 0.8))
+                        except Exception:
+                            pass
                     _scroll_feed(driver, feed)
                 except StaleElementReferenceException:
                     try:
@@ -908,7 +919,7 @@ def scrape_google_maps(
                     except Exception:
                         break
 
-                _wait_for_new_cards(driver, selector, prev_count, timeout=8 if speed == "fast" else 10)
+                _wait_for_new_cards(driver, selector, prev_count, timeout=10 if speed == "fast" else 15)
 
                 remaining = max_results - len(place_summaries)
                 if remaining > 300:

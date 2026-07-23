@@ -491,6 +491,71 @@ def _get_campaign_suggestions(stats):
     return suggestions[:4]
 
 
+def _get_followup_campaign_reminders():
+    """Return follow-up campaign reminders based on the 1-day / 7-day / 14-day cadence.
+
+    For each sent/stopped campaign that has at least one successful send, check
+    how long ago the last email went out. Remind the user to re-send at the
+    same cadence used for lead follow-ups: today (1 day), week (7 days), and
+    final (14 days). Converted/stopped leads are excluded by the sender itself.
+    """
+    from datetime import date, timedelta
+    from django.db.models import Max
+    reminders = []
+    today = date.today()
+
+    # Campaigns that have actually sent at least one email
+    sent_campaigns = (
+        EmailCampaign.objects
+        .filter(status__in=["sent", "stopped"])
+        .annotate(last_sent=Max("sends__sent_at"))
+        .exclude(last_sent=None)
+        .order_by("-last_sent")
+    )
+
+    for campaign in sent_campaigns[:30]:  # check at most 30 recent campaigns
+        last_sent_date = campaign.last_sent.date() if campaign.last_sent else None
+        if not last_sent_date:
+            continue
+        days_ago = (today - last_sent_date).days
+
+        if days_ago == 1:
+            reminders.append({
+                "icon": "🔁",
+                "badge": "Today",
+                "badge_class": "fu-badge-today",
+                "campaign_name": campaign.name,
+                "desc": f"Sent yesterday — follow up today to stay top-of-mind.",
+                "action_label": "Send Now",
+                "action_url": f"/campaigns/{campaign.id}/send/",
+                "campaign_id": campaign.id,
+            })
+        elif 6 <= days_ago <= 8:
+            reminders.append({
+                "icon": "📅",
+                "badge": "7-Day",
+                "badge_class": "fu-badge-week",
+                "campaign_name": campaign.name,
+                "desc": f"Sent {days_ago} days ago — it's time for your 7-day follow-up.",
+                "action_label": "Send Now",
+                "action_url": f"/campaigns/{campaign.id}/send/",
+                "campaign_id": campaign.id,
+            })
+        elif 13 <= days_ago <= 15:
+            reminders.append({
+                "icon": "🏁",
+                "badge": "Final",
+                "badge_class": "fu-badge-final",
+                "campaign_name": campaign.name,
+                "desc": f"Sent {days_ago} days ago — send your final follow-up before closing.",
+                "action_label": "Send Final",
+                "action_url": f"/campaigns/{campaign.id}/send/",
+                "campaign_id": campaign.id,
+            })
+
+    return reminders[:5]
+
+
 # ─── Dashboard ───────────────────────────────────────────────────────────────
 
 def _get_pipeline_insights():
@@ -619,6 +684,7 @@ def home(request):
         "connect_today": _get_connect_today(),
         "top_leads": _get_top_leads(),
         "campaign_suggestions": _get_campaign_suggestions(stats),
+        "followup_campaign_reminders": _get_followup_campaign_reminders(),
         "pipeline_insights": _get_pipeline_insights(),
         "auto_config": auto_config,
         "auto_scrape_on": auto_config.auto_scrape_enabled,

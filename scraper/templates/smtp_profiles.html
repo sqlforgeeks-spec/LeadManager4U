@@ -135,8 +135,13 @@
         <button type="button" class="btn btn-secondary btn-sm" onclick="fillPreset('gmail')">📧 Gmail</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="fillPreset('brevo')">💌 Brevo</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="fillPreset('outlook')">🪟 Outlook</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="fillPreset('yahoo')">🟣 Yahoo</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="fillPreset('zoho')">🟠 Zoho</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="fillPreset('icloud')">☁️ iCloud</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="fillPreset('sendgrid')">📨 SendGrid</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="fillPreset('mailgun')">🔫 Mailgun</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="fillPreset('amazonses')">🟡 Amazon SES</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="fillPreset('postmark')">📮 Postmark</button>
       </div>
     </div>
 
@@ -430,6 +435,43 @@
           <strong>Mailgun:</strong> <code>smtp.mailgun.org</code> · port: <code>587</code>
         </div>
       </div>
+      <div class="meta-item">
+        <div class="meta-label">Yahoo Mail</div>
+        <div style="font-size:13px; color:var(--text-muted); margin-top:4px;">
+          Host: <code>smtp.mail.yahoo.com</code> · Port: <code>587</code> · TLS: ✓<br>
+          Use an <strong>App Password</strong> — Yahoo Account Security → Generate app password.<br>
+          Your regular Yahoo password won't work.
+        </div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Zoho Mail</div>
+        <div style="font-size:13px; color:var(--text-muted); margin-top:4px;">
+          Host: <code>smtp.zoho.com</code> · Port: <code>587</code> · TLS: ✓<br>
+          Use your Zoho password, or an App-Specific Password if 2FA is on.<br>
+          Daily limit: ~200 free / ~500 paid.
+        </div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">iCloud Mail</div>
+        <div style="font-size:13px; color:var(--text-muted); margin-top:4px;">
+          Host: <code>smtp.mail.me.com</code> · Port: <code>587</code> · TLS: ✓<br>
+          Requires an <strong>App-Specific Password</strong>: appleid.apple.com → Sign-In and Security → App-Specific Passwords.
+        </div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Amazon SES</div>
+        <div style="font-size:13px; color:var(--text-muted); margin-top:4px;">
+          Host: <code>email-smtp.us-east-1.amazonaws.com</code> · Port: <code>587</code><br>
+          Create <strong>SES SMTP credentials</strong> in AWS Console → SES → SMTP Settings (NOT your AWS access key).
+        </div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Postmark</div>
+        <div style="font-size:13px; color:var(--text-muted); margin-top:4px;">
+          Host: <code>smtp.postmarkapp.com</code> · Port: <code>587</code> · TLS: ✓<br>
+          Use your <strong>Server API Token</strong> as both username and password.
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -525,11 +567,16 @@ document.getElementById('edit-modal')?.addEventListener('click', e => {
 
 // ── Provider presets ─────────────────────────────────────────────────────
 const _presets = {
-  gmail:    { host: 'smtp.gmail.com',          port: 587, tls: true,  limit: 300, nameHint: 'Gmail',    passHint: 'Use a 16-character App Password (Google Account → Security → App Passwords).' },
-  brevo:    { host: 'smtp-relay.brevo.com',    port: 587, tls: true,  limit: 300, nameHint: 'Brevo',    passHint: 'Use your SMTP Key — see the blue callout above for step-by-step.' },
-  outlook:  { host: 'smtp.office365.com',      port: 587, tls: true,  limit: 300, nameHint: 'Outlook',  passHint: 'Use your Microsoft account password (or App Password if MFA is on).' },
-  sendgrid: { host: 'smtp.sendgrid.net',       port: 587, tls: true,  limit: 0,   nameHint: 'SendGrid', passHint: 'Username is literally "apikey". Password is your SendGrid API key.' },
-  mailgun:  { host: 'smtp.mailgun.org',        port: 587, tls: true,  limit: 0,   nameHint: 'Mailgun',  passHint: 'Use your Mailgun SMTP password from Sending → Domain settings.' },
+  gmail:     { host: 'smtp.gmail.com',                port: 587, tls: true,  limit: 300, nameHint: 'Gmail',       passHint: 'Use a 16-character App Password (Google Account → Security → App Passwords).' },
+  brevo:     { host: 'smtp-relay.brevo.com',          port: 587, tls: true,  limit: 300, nameHint: 'Brevo',       passHint: 'Use your SMTP Key — see the blue callout above for step-by-step.' },
+  outlook:   { host: 'smtp.office365.com',            port: 587, tls: true,  limit: 300, nameHint: 'Outlook',     passHint: 'Use your Microsoft account password (or App Password if MFA is on).' },
+  yahoo:     { host: 'smtp.mail.yahoo.com',           port: 587, tls: true,  limit: 300, nameHint: 'Yahoo',       passHint: 'Use a Yahoo App Password: Account Security → Generate app password. Your Yahoo account password will NOT work.' },
+  zoho:      { host: 'smtp.zoho.com',                 port: 587, tls: true,  limit: 200, nameHint: 'Zoho',        passHint: 'Use your Zoho account password, or an App-Specific Password if 2FA is enabled (Zoho Account → Security → App Passwords).' },
+  icloud:    { host: 'smtp.mail.me.com',              port: 587, tls: true,  limit: 200, nameHint: 'iCloud',      passHint: 'Use an iCloud App-Specific Password: appleid.apple.com → Sign-In and Security → App-Specific Passwords.' },
+  sendgrid:  { host: 'smtp.sendgrid.net',             port: 587, tls: true,  limit: 0,   nameHint: 'SendGrid',    passHint: 'Username is literally "apikey". Password is your SendGrid API key.' },
+  mailgun:   { host: 'smtp.mailgun.org',              port: 587, tls: true,  limit: 0,   nameHint: 'Mailgun',     passHint: 'Use your Mailgun SMTP password from Sending → Domain settings.' },
+  amazonses: { host: 'email-smtp.us-east-1.amazonaws.com', port: 587, tls: true, limit: 0, nameHint: 'Amazon SES', passHint: 'Use SES SMTP credentials (NOT your AWS key). In AWS Console → SES → SMTP Settings → Create SMTP Credentials.' },
+  postmark:  { host: 'smtp.postmarkapp.com',          port: 587, tls: true,  limit: 0,   nameHint: 'Postmark',    passHint: 'Use your Postmark Server API Token as both the username and password.' },
 };
 
 function fillPreset(key) {

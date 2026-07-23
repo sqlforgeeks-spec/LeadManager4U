@@ -226,13 +226,14 @@
 
 <!-- Test Email Modal -->
 <div id="test-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1000; align-items:center; justify-content:center;">
-  <div class="card" style="width:420px; max-width:92vw;">
+  <div class="card" style="width:460px; max-width:92vw;">
     <div class="card-header">
       <div class="card-title">📨 Send Test Email</div>
       <button type="button" class="btn btn-ghost btn-sm" onclick="closeTestModal()">✕</button>
     </div>
     <div class="card-body">
       <p style="font-size:13px; color:var(--text-muted); margin-bottom:14px;">Send a test email via <strong id="test-profile-name"></strong> to verify it's working.</p>
+      <div id="test-from-info" style="margin-bottom:14px; padding:10px 14px; border-radius:8px; font-size:13px; line-height:1.6;"></div>
       <div class="form-group">
         <label class="form-label">Send test to (email address) *</label>
         <input type="email" id="test-to-email" class="form-input" placeholder="you@example.com" required>
@@ -371,7 +372,7 @@
           <td class="no-row-click">
             <div class="action-group">
               <button type="button" class="btn btn-secondary btn-sm"
-                onclick="openTestModal({{ p.id }}, '{{ p.name|escapejs }}')">📨 Test</button>
+                onclick="openTestModal({{ p.id }}, '{{ p.name|escapejs }}', '{{ p.from_email|escapejs }}', '{{ p.user|escapejs }}')">📨 Test</button>
               <button type="button" class="btn btn-primary btn-sm"
                 onclick="openEditModal({{ p.id }}, '{{ p.name|escapejs }}', '{{ p.host|escapejs }}', {{ p.port }}, '{{ p.user|escapejs }}', {{ p.use_tls|yesno:'true,false' }}, {{ p.daily_limit }}, {{ p.password|yesno:'true,false' }}, '{{ p.from_name|escapejs }}', '{{ p.from_email|escapejs }}', '{{ p.reply_to|escapejs }}')">✏️ Edit</button>
               <form method="post" action="{% url 'delete_smtp_profile' p.id %}" onsubmit="return confirm('Delete this SMTP profile?')">
@@ -653,11 +654,31 @@ function onRotationChange(sel) {
 
 // Test email modal
 let _testProfileId = null;
-function openTestModal(profileId, profileName) {
+function openTestModal(profileId, profileName, fromEmail, smtpUser) {
   _testProfileId = profileId;
   document.getElementById('test-profile-name').textContent = profileName;
   document.getElementById('test-to-email').value = '';
   document.getElementById('test-result').style.display = 'none';
+
+  // Show which From address will actually be used
+  const infoEl = document.getElementById('test-from-info');
+  const effectiveSender = fromEmail || smtpUser || '';
+  if (!fromEmail) {
+    infoEl.style.background = '#FEF3C7';
+    infoEl.style.border = '1px solid #FCD34D';
+    infoEl.style.color = '#92400E';
+    infoEl.innerHTML = `⚠️ <strong>No From Email set on this profile.</strong><br>
+      The test will send from <code>${smtpUser}</code> (your SMTP username).<br>
+      For Brevo, this is your login credential — <strong>not a verified sender</strong>, so Brevo may silently drop the email.<br>
+      Fix: edit this profile and set a <strong>From Email</strong> that is verified in Brevo → Senders.`;
+  } else {
+    infoEl.style.background = '#D1FAE5';
+    infoEl.style.border = '1px solid #6EE7B7';
+    infoEl.style.color = '#065F46';
+    infoEl.innerHTML = `✅ Test will send <strong>from: ${fromEmail}</strong><br>
+      Make sure this address is a <strong>verified sender</strong> in your email provider (e.g. Brevo → Senders, domains & IPs → Senders).`;
+  }
+
   document.getElementById('test-modal').style.display = 'flex';
 }
 function closeTestModal() {

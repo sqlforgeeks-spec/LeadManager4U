@@ -494,21 +494,29 @@ def send_test_email(profile_id, to_email, log_fn=None):
         return False, f"Connection failed: {exc}"
 
     try:
+        # Use the profile's verified sender address if set, otherwise fall back to SMTP username
+        sender_email = profile.from_email.strip() if profile.from_email else profile.user
+        sender_name  = profile.from_name.strip()  if profile.from_name  else ""
+        from_header  = f"{sender_name} <{sender_email}>" if sender_name else sender_email
+
         msg = MIMEMultipart("alternative")
         msg["Subject"] = "✅ Test email from LeadManager4U"
-        msg["From"] = profile.user
+        msg["From"] = from_header
         msg["To"] = to_email
+        if profile.reply_to:
+            msg["Reply-To"] = profile.reply_to
         body = (
             f"This is a test email sent from LeadManager4U.\n\n"
             f"SMTP Profile: {profile.name}\n"
             f"Host: {profile.host}:{profile.port}\n"
-            f"User: {profile.user}\n\n"
+            f"Sent from: {sender_email}\n\n"
             f"If you received this, your SMTP profile is working correctly! ✅"
         )
         msg.attach(MIMEText(body, "plain", "utf-8"))
-        conn.sendmail(profile.user, [to_email], msg.as_string())
+        # Envelope sender must match the verified From address for providers like Brevo
+        conn.sendmail(sender_email, [to_email], msg.as_string())
         conn.quit()
-        return True, f"Test email sent to {to_email} via {profile.name}."
+        return True, f"Test email sent to {to_email} via {profile.name} (from: {sender_email})."
     except Exception as exc:
         try:
             conn.quit()

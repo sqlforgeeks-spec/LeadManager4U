@@ -124,9 +124,10 @@ Write-Step "Step 4/4 - Remove Files"
 if (Test-Path $INSTALL_DIR) {
     Write-Host ""
     Write-Host "  The install directory is: $INSTALL_DIR" -ForegroundColor Yellow
-    Write-Host "  This contains your database (db.sqlite3) with all lead data." -ForegroundColor Yellow
+    Write-Host "  Note: Your database backups are safely stored at: C:\LeadManager4U-Backups" -ForegroundColor Cyan
+    Write-Host "  (Backups are stored outside the install folder and are NOT deleted during uninstall)" -ForegroundColor Cyan
     Write-Host ""
-    $delChoice = Read-Host "  Delete entire directory? (yes / no / keep-db)"
+    $delChoice = Read-Host "  Delete application directory $INSTALL_DIR? (yes / no / keep-db)"
 
     if ($delChoice -eq "yes") {
         Remove-Item $INSTALL_DIR -Recurse -Force -ErrorAction SilentlyContinue

@@ -13,7 +13,13 @@
 # CONFIGURATION
 # --------------------------------------------------------------
 
-$INSTALL_DIR   = "C:\LeadManager4U"
+param(
+    [string]$InstallDir = "C:\LeadManager4U",
+    [string]$BackupDir  = "C:\LeadManager4U-Backups"
+)
+
+$INSTALL_DIR   = $InstallDir
+$BACKUP_DIR    = $BackupDir
 $SERVICE_NAME  = "LeadManager4U"
 $PORT          = 80
 $HOST_NAME     = "lm.ai"
@@ -27,7 +33,6 @@ $VENV_DIR      = Join-Path $INSTALL_DIR ".venv"
 $TOOLS_DIR     = Join-Path $INSTALL_DIR "tools"
 $NSSM_EXE      = Join-Path $TOOLS_DIR  "nssm.exe"
 $LOGS_DIR      = Join-Path $INSTALL_DIR "logs"
-$BACKUP_DIR    = Join-Path $INSTALL_DIR "backups"
 $LOGO_ICO      = Join-Path $SCRIPT_DIR "logo.ico"
 $INSTALLED_LOGO= Join-Path $INSTALL_DIR "logo.ico"
 
@@ -223,15 +228,22 @@ if (-not (Test-Path $BACKUP_DIR)) {
     New-Item -ItemType Directory -Path $BACKUP_DIR -Force | Out-Null
 }
 
-# Relocate any existing loose database backups from root to backups directory
+# Relocate any old loose backups or internal backups folder to the external backup directory
 Get-ChildItem -Path $INSTALL_DIR -Filter "db.sqlite3.backup-*" -File -ErrorAction SilentlyContinue | ForEach-Object {
     $dest = Join-Path $BACKUP_DIR $_.Name
-    if (-not (Test-Path $dest)) {
-        Move-Item $_.FullName $dest -Force -ErrorAction SilentlyContinue
-    } else {
-        Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
+    if (-not (Test-Path $dest)) { Move-Item $_.FullName $dest -Force -ErrorAction SilentlyContinue }
+    else { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue }
+    Write-Info "Relocated loose backup $($_.Name) -> $BACKUP_DIR"
+}
+
+$oldInternalBackups = Join-Path $INSTALL_DIR "backups"
+if (Test-Path $oldInternalBackups) {
+    Get-ChildItem -Path $oldInternalBackups -Filter "db.sqlite3.backup-*" -File -ErrorAction SilentlyContinue | ForEach-Object {
+        $dest = Join-Path $BACKUP_DIR $_.Name
+        if (-not (Test-Path $dest)) { Move-Item $_.FullName $dest -Force -ErrorAction SilentlyContinue }
+        else { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue }
     }
-    Write-Info "Relocated loose backup $($_.Name) -> backups/"
+    Remove-Item $oldInternalBackups -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 if ($IS_UPGRADE) {
@@ -244,7 +256,7 @@ if ($IS_UPGRADE) {
             $src = "$dbFile$ext"
             if (Test-Path $src) { Copy-Item $src "$dbBackup$ext" -Force }
         }
-        Write-OK "Database backed up -> backups/db.sqlite3.backup-$ts"
+        Write-OK "Database backed up -> $dbBackup"
 
         # Prune old backups, keeping only the 5 most recent
         $backupsList = Get-ChildItem -Path $BACKUP_DIR -Filter "db.sqlite3.backup-*" |

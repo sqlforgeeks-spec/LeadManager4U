@@ -39,6 +39,7 @@ $SCRIPT_DIR  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $PROJECT_DIR = Split-Path -Parent $SCRIPT_DIR
 
 $DEFAULT_INSTALL_DIR = "C:\LeadManager4U"
+$DEFAULT_BACKUP_DIR  = "C:\LeadManager4U-Backups"
 $SERVICE_NAME        = "LeadManager4U"
 $PORT                = 80
 $HOST_NAME           = "lm.ai"
@@ -53,7 +54,7 @@ $NSSM_VER            = "2.24"
 
 $form               = New-Object System.Windows.Forms.Form
 $form.Text          = "LeadManager4U.ai Setup Wizard"
-$form.Size          = New-Object System.Drawing.Size(680, 580)
+$form.Size          = New-Object System.Drawing.Size(680, 640)
 $form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
 $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedSingle
 $form.MaximizeBox   = $false
@@ -87,14 +88,14 @@ $form.Controls.Add($bannerPanel)
 $grpOptions          = New-Object System.Windows.Forms.GroupBox
 $grpOptions.Text     = " Installation Settings "
 $grpOptions.Font     = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-$grpOptions.Location = New-Object System.Drawing.Point(20, 90)
-$grpOptions.Size     = New-Object System.Drawing.Size(625, 165)
+$grpOptions.Location = New-Object System.Drawing.Point(20, 85)
+$grpOptions.Size     = New-Object System.Drawing.Size(625, 218)
 
 # Label: Install Path
 $lblPath          = New-Object System.Windows.Forms.Label
 $lblPath.Text     = "Install Location (Select Drive / Folder):"
 $lblPath.Font     = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Regular)
-$lblPath.Location = New-Object System.Drawing.Point(15, 25)
+$lblPath.Location = New-Object System.Drawing.Point(15, 24)
 $lblPath.AutoSize = $true
 $grpOptions.Controls.Add($lblPath)
 
@@ -102,15 +103,15 @@ $grpOptions.Controls.Add($lblPath)
 $txtPath          = New-Object System.Windows.Forms.TextBox
 $txtPath.Text     = $DEFAULT_INSTALL_DIR
 $txtPath.Font     = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Regular)
-$txtPath.Location = New-Object System.Drawing.Point(15, 48)
+$txtPath.Location = New-Object System.Drawing.Point(15, 45)
 $txtPath.Size     = New-Object System.Drawing.Size(485, 25)
 $grpOptions.Controls.Add($txtPath)
 
-# Button: Browse
+# Button: Browse Install Path
 $btnBrowse          = New-Object System.Windows.Forms.Button
 $btnBrowse.Text     = "Browse..."
 $btnBrowse.Font     = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Regular)
-$btnBrowse.Location = New-Object System.Drawing.Point(510, 46)
+$btnBrowse.Location = New-Object System.Drawing.Point(510, 43)
 $btnBrowse.Size     = New-Object System.Drawing.Size(100, 27)
 $btnBrowse.Add_Click({
     $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
@@ -122,38 +123,70 @@ $btnBrowse.Add_Click({
 })
 $grpOptions.Controls.Add($btnBrowse)
 
+# Label: Backup Path
+$lblBackupPath          = New-Object System.Windows.Forms.Label
+$lblBackupPath.Text     = "Database Backup Location (Safely stored outside install directory):"
+$lblBackupPath.Font     = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Regular)
+$lblBackupPath.Location = New-Object System.Drawing.Point(15, 78)
+$lblBackupPath.AutoSize = $true
+$grpOptions.Controls.Add($lblBackupPath)
+
+# Textbox: Backup Path
+$txtBackupPath          = New-Object System.Windows.Forms.TextBox
+$txtBackupPath.Text     = $DEFAULT_BACKUP_DIR
+$txtBackupPath.Font     = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Regular)
+$txtBackupPath.Location = New-Object System.Drawing.Point(15, 99)
+$txtBackupPath.Size     = New-Object System.Drawing.Size(485, 25)
+$grpOptions.Controls.Add($txtBackupPath)
+
+# Button: Browse Backup Path
+$btnBrowseBackup          = New-Object System.Windows.Forms.Button
+$btnBrowseBackup.Text     = "Browse..."
+$btnBrowseBackup.Font     = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Regular)
+$btnBrowseBackup.Location = New-Object System.Drawing.Point(510, 97)
+$btnBrowseBackup.Size     = New-Object System.Drawing.Size(100, 27)
+$btnBrowseBackup.Add_Click({
+    $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
+    $dlg.Description = "Select Directory for Database Backups"
+    $dlg.SelectedPath = $txtBackupPath.Text
+    if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+        $txtBackupPath.Text = $dlg.SelectedPath
+    }
+})
+$grpOptions.Controls.Add($btnBrowseBackup)
+
 # Checkbox: Desktop Shortcut
 $chkShortcut          = New-Object System.Windows.Forms.CheckBox
 $chkShortcut.Text     = "Create Desktop Shortcut (http://lm.ai)"
 $chkShortcut.Font     = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Regular)
 $chkShortcut.Checked  = $true
-$chkShortcut.Location = New-Object System.Drawing.Point(15, 85)
+$chkShortcut.Location = New-Object System.Drawing.Point(15, 136)
 $chkShortcut.Size     = New-Object System.Drawing.Size(280, 25)
 $grpOptions.Controls.Add($chkShortcut)
-
-# Checkbox: Service Registration
-$chkService          = New-Object System.Windows.Forms.CheckBox
-$chkService.Text     = "Register Windows Service (Auto-start on Windows boot)"
-$chkService.Font     = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Regular)
-$chkService.Checked  = $true
-$chkService.Location = New-Object System.Drawing.Point(15, 115)
-$chkService.Size     = New-Object System.Drawing.Size(380, 25)
-$grpOptions.Controls.Add($chkService)
 
 # Checkbox: Open Browser
 $chkOpenBrowser          = New-Object System.Windows.Forms.CheckBox
 $chkOpenBrowser.Text     = "Launch http://lm.ai in browser when complete"
 $chkOpenBrowser.Font     = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Regular)
 $chkOpenBrowser.Checked  = $true
-$chkOpenBrowser.Location = New-Object System.Drawing.Point(310, 85)
+$chkOpenBrowser.Location = New-Object System.Drawing.Point(310, 136)
 $chkOpenBrowser.Size     = New-Object System.Drawing.Size(300, 25)
 $grpOptions.Controls.Add($chkOpenBrowser)
+
+# Checkbox: Service Registration
+$chkService          = New-Object System.Windows.Forms.CheckBox
+$chkService.Text     = "Register Windows Service (Auto-start on Windows boot)"
+$chkService.Font     = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Regular)
+$chkService.Checked  = $true
+$chkService.Location = New-Object System.Drawing.Point(15, 168)
+$chkService.Size     = New-Object System.Drawing.Size(380, 25)
+$grpOptions.Controls.Add($chkService)
 
 $form.Controls.Add($grpOptions)
 
 # Progress Bar
 $progressBar          = New-Object System.Windows.Forms.ProgressBar
-$progressBar.Location = New-Object System.Drawing.Point(20, 268)
+$progressBar.Location = New-Object System.Drawing.Point(20, 312)
 $progressBar.Size     = New-Object System.Drawing.Size(625, 20)
 $progressBar.Style    = [System.Windows.Forms.ProgressBarStyle]::Continuous
 $progressBar.Value    = 0
@@ -161,8 +194,8 @@ $form.Controls.Add($progressBar)
 
 # Log Panel (RichTextBox)
 $rtbLog            = New-Object System.Windows.Forms.RichTextBox
-$rtbLog.Location   = New-Object System.Drawing.Point(20, 298)
-$rtbLog.Size       = New-Object System.Drawing.Size(625, 175)
+$rtbLog.Location   = New-Object System.Drawing.Point(20, 340)
+$rtbLog.Size       = New-Object System.Drawing.Size(625, 185)
 $rtbLog.ReadOnly   = $true
 $rtbLog.Font       = New-Object System.Drawing.Font("Consolas", 8.5)
 $rtbLog.BackColor  = [System.Drawing.Color]::FromArgb(15, 23, 42)
@@ -193,7 +226,7 @@ $btnInstall.Font     = New-Object System.Drawing.Font("Segoe UI", 10, [System.Dr
 $btnInstall.BackColor= [System.Drawing.Color]::FromArgb(16, 185, 129)
 $btnInstall.ForeColor= [System.Drawing.Color]::White
 $btnInstall.FlatStyle= [System.Windows.Forms.FlatStyle]::Flat
-$btnInstall.Location = New-Object System.Drawing.Point(20, 488)
+$btnInstall.Location = New-Object System.Drawing.Point(20, 542)
 $btnInstall.Size     = New-Object System.Drawing.Size(180, 38)
 $form.Controls.Add($btnInstall)
 
@@ -203,27 +236,29 @@ $btnUninstall.Font     = New-Object System.Drawing.Font("Segoe UI", 10, [System.
 $btnUninstall.BackColor= [System.Drawing.Color]::FromArgb(239, 68, 68)
 $btnUninstall.ForeColor= [System.Drawing.Color]::White
 $btnUninstall.FlatStyle= [System.Windows.Forms.FlatStyle]::Flat
-$btnUninstall.Location = New-Object System.Drawing.Point(220, 488)
+$btnUninstall.Location = New-Object System.Drawing.Point(220, 542)
 $btnUninstall.Size     = New-Object System.Drawing.Size(160, 38)
 $form.Controls.Add($btnUninstall)
 
 $btnClose          = New-Object System.Windows.Forms.Button
 $btnClose.Text     = "Close"
 $btnClose.Font     = New-Object System.Drawing.Font("Segoe UI", 10)
-$btnClose.Location = New-Object System.Drawing.Point(545, 488)
+$btnClose.Location = New-Object System.Drawing.Point(545, 542)
 $btnClose.Size     = New-Object System.Drawing.Size(100, 38)
 $btnClose.Add_Click({ $form.Close() })
 $form.Controls.Add($btnClose)
 
 # Controls Lock/Unlock
 function Set-ControlsEnabled([bool]$enabled) {
-    $btnInstall.Enabled     = $enabled
-    $btnUninstall.Enabled   = $enabled
-    $btnBrowse.Enabled      = $enabled
-    $txtPath.Enabled        = $enabled
-    $chkShortcut.Enabled    = $enabled
-    $chkService.Enabled     = $enabled
-    $chkOpenBrowser.Enabled = $enabled
+    $btnInstall.Enabled      = $enabled
+    $btnUninstall.Enabled    = $enabled
+    $btnBrowse.Enabled       = $enabled
+    $txtPath.Enabled         = $enabled
+    $btnBrowseBackup.Enabled = $enabled
+    $txtBackupPath.Enabled   = $enabled
+    $chkShortcut.Enabled     = $enabled
+    $chkService.Enabled      = $enabled
+    $chkOpenBrowser.Enabled  = $enabled
 }
 
 # --------------------------------------------------------------
@@ -241,15 +276,18 @@ $btnInstall.Add_Click({
     $progressBar.Value = 0
     $rtbLog.Clear()
 
+    $backupDir = $txtBackupPath.Text.Trim()
+    if ([string]::IsNullOrWhiteSpace($backupDir)) { $backupDir = $DEFAULT_BACKUP_DIR }
+
     Append-Log "Starting LeadManager4U Setup..." "STEP"
-    Append-Log "Target Path: $installDir" "INFO"
-    Append-Log "Target URL:  http://lm.ai" "INFO"
+    Append-Log "Target Path:   $installDir" "INFO"
+    Append-Log "Backup Path:   $backupDir" "INFO"
+    Append-Log "Target URL:    http://lm.ai" "INFO"
 
     $venvDir   = Join-Path $installDir ".venv"
     $toolsDir  = Join-Path $installDir "tools"
     $nssmExe   = Join-Path $toolsDir "nssm.exe"
     $logsDir   = Join-Path $installDir "logs"
-    $backupDir    = Join-Path $installDir "backups"
     $logoIco      = Join-Path $SCRIPT_DIR "logo.ico"
     $installedLogo= Join-Path $installDir "logo.ico"
     $isUpgrade = Test-Path (Join-Path $installDir "manage.py")
@@ -321,14 +359,22 @@ $btnInstall.Add_Click({
         New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
     }
 
+    # Relocate any old loose backups or internal backups folder to the external backup directory
     Get-ChildItem -Path $installDir -Filter "db.sqlite3.backup-*" -File -ErrorAction SilentlyContinue | ForEach-Object {
         $dest = Join-Path $backupDir $_.Name
-        if (-not (Test-Path $dest)) {
-            Move-Item $_.FullName $dest -Force -ErrorAction SilentlyContinue
-        } else {
-            Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
+        if (-not (Test-Path $dest)) { Move-Item $_.FullName $dest -Force -ErrorAction SilentlyContinue }
+        else { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue }
+        Append-Log "Relocated loose backup $($_.Name) -> $backupDir" "INFO"
+    }
+
+    $oldInternalBackups = Join-Path $installDir "backups"
+    if (Test-Path $oldInternalBackups) {
+        Get-ChildItem -Path $oldInternalBackups -Filter "db.sqlite3.backup-*" -File -ErrorAction SilentlyContinue | ForEach-Object {
+            $dest = Join-Path $backupDir $_.Name
+            if (-not (Test-Path $dest)) { Move-Item $_.FullName $dest -Force -ErrorAction SilentlyContinue }
+            else { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue }
         }
-        Append-Log "Relocated loose backup $($_.Name) -> backups/" "INFO"
+        Remove-Item $oldInternalBackups -Recurse -Force -ErrorAction SilentlyContinue
     }
 
     if ($isUpgrade) {
@@ -341,7 +387,7 @@ $btnInstall.Add_Click({
                 $src = "$dbFile$ext"
                 if (Test-Path $src) { Copy-Item $src "$dbBackup$ext" -Force }
             }
-            Append-Log "Database backed up -> backups/db.sqlite3.backup-$ts" "OK"
+            Append-Log "Database backed up -> $dbBackup" "OK"
 
             $backupsList = Get-ChildItem -Path $backupDir -Filter "db.sqlite3.backup-*" |
                            Where-Object { $_.Name -notmatch "\-(wal|shm)$" } |

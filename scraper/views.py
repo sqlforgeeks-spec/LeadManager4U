@@ -2887,7 +2887,32 @@ def restore_database_view(request):
                 except Exception:
                     pass
 
-        # 6. Ensure superuser credentials are set in the newly restored database
+        # 6. Resolve any email conflicts and auto-migrate restored database schema
+        try:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, username, email FROM auth_user")
+            rows = cursor.fetchall()
+            emails_seen = set()
+            for user_id, uname, email in rows:
+                if not email or email in emails_seen:
+                    new_email = f"{uname}_{user_id}@local.com"
+                    cursor.execute("UPDATE auth_user SET email = ? WHERE id = ?", (new_email, user_id))
+                else:
+                    emails_seen.add(email)
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+        try:
+            from django.core.management import call_command
+            connections.close_all()
+            call_command('migrate', interactive=False)
+        except Exception:
+            pass
+
+        # 7. Ensure superuser credentials are set in the newly restored database
         admin_username = request.POST.get('admin_username', '').strip() or 'SA'
         admin_password = request.POST.get('admin_password', '').strip() or 'sqlforgeeks.ai'
 
@@ -2896,7 +2921,7 @@ def restore_database_view(request):
             connections.close_all()
             user_obj, _ = User.objects.get_or_create(
                 username=admin_username,
-                defaults={'is_superuser': True, 'is_staff': True, 'is_active': True}
+                defaults={'is_superuser': True, 'is_staff': True, 'is_active': True, 'email': f"{admin_username}@local.com"}
             )
             user_obj.is_superuser = True
             user_obj.is_staff = True
@@ -2915,6 +2940,7 @@ def restore_database_view(request):
 
     except Exception as e:
         return JsonResponse({"status": "error", "message": f"Failed to restore database: {str(e)}"}, status=500)
+
 
 
 

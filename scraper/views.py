@@ -2746,3 +2746,175 @@ def manual_backup_view(request):
     except Exception as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=500)
 
+
+@csrf_exempt
+def restore_database_view(request):
+    """Restores the database from an uploaded SQLite backup or .sql file."""
+    if not request.user.is_authenticated:
+        return JsonResponse({"status": "error", "message": "Authentication required."}, status=403)
+
+    if request.method != "POST":
+        return JsonResponse({"status": "error", "message": "POST request required."}, status=405)
+
+    if 'backup_file' not in request.FILES:
+        return JsonResponse({"status": "error", "message": "No backup file uploaded."}, status=400)
+
+    uploaded_file = request.FILES['backup_file']
+    if not uploaded_file.name:
+        return JsonResponse({"status": "error", "message": "Invalid file uploaded."}, status=400)
+
+    try:
+        import shutil
+        import sqlite3
+        from datetime import datetime
+        from django.conf import settings
+        from django.db import connection, connections
+
+        db_path = str(settings.DATABASES['default']['NAME'])
+        backup_dir = os.environ.get('LEADMANAGER_BACKUP_DIR', os.environ.get('BACKUP_DIR', ''))
+        if not backup_dir:
+            if os.name == 'nt':
+                backup_dir = r'C:\LeadManager4U-Backups'
+            else:
+                backup_dir = str(settings.BASE_DIR / 'backups')
+        os.makedirs(backup_dir, exist_ok=True)
+
+        # 1. Create automatic pre-restore safety backup first
+        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        pre_restore_file = os.path.join(backup_dir, f"db.sqlite3.pre-restore-{ts}")
+        if os.path.exists(db_path):
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("PRAGMA wal_checkpoint(FULL);")
+            except Exception:
+                pass
+            shutil.copy2(db_path, pre_restore_file)
+
+        # 2. Save uploaded file to temp path for verification
+        temp_uploaded_path = os.path.join(backup_dir, f"temp_upload_{ts}_{uploaded_file.name}")
+        with open(temp_uploaded_path, 'wb+') as f:
+            for chunk in uploaded_file.chunks():
+                f.write(chunk)
+
+        # 3. Detect file type (SQLite binary vs SQL script)
+        is_sql_script = False
+        is_valid_sqlite = False
+
+        # Read first 16 bytes to check SQLite header
+        with open(temp_uploaded_path, 'rb') as f:
+            header = f.read(16)
+            if header.startswith(b'SQLite format 3\x00'):
+                is_valid_sqlite = True
+
+        if not is_valid_sqlite:
+            try:
+                with open(temp_uploaded_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content_sample = f.read(4096)
+                    sql_keywords = ['CREATE ', 'INSERT ', 'BEGIN ', 'COMMIT', 'PRAGMA', 'DROP ']
+                    if any(kw in content_sample.upper() for kw in sql_keywords) or uploaded_file.name.endswith('.sql'):
+                        is_sql_script = True
+            except Exception:
+                pass
+
+        if not is_valid_sqlite and not is_sql_script:
+            if os.path.exists(temp_uploaded_path):
+                os.remove(temp_uploaded_path)
+            return JsonResponse({
+                "status": "error",
+                "message": "Selected file does not appear to be a valid SQLite database or .sql script file."
+            }, status=400)
+
+        # 4. Prepare target database file from upload
+        temp_target_db = os.path.join(backup_dir, f"temp_restored_{ts}.sqlite3")
+
+        if is_sql_script:
+            if os.path.exists(temp_target_db):
+                os.remove(temp_target_db)
+            
+            with open(temp_uploaded_path, 'r', encoding='utf-8', errors='ignore') as sql_file:
+                sql_script = sql_file.read()
+
+            conn = sqlite3.connect(temp_target_db)
+            try:
+                conn.executescript(sql_script)
+                conn.commit()
+            except Exception as sql_err:
+                conn.close()
+                if os.path.exists(temp_target_db):
+                    os.remove(temp_target_db)
+                if os.path.exists(temp_uploaded_path):
+                    os.remove(temp_uploaded_path)
+                return JsonResponse({
+                    "status": "error",
+                    "message": f"Error executing SQL script: {str(sql_err)}"
+                }, status=400)
+            finally:
+                conn.close()
+        else:
+            try:
+                conn = sqlite3.connect(temp_uploaded_path)
+                cursor = conn.cursor()
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+                conn.close()
+            except Exception as db_err:
+                if os.path.exists(temp_uploaded_path):
+                    os.remove(temp_uploaded_path)
+                return JsonResponse({
+                    "status": "error",
+                    "message": f"Invalid or corrupt SQLite database file: {str(db_err)}"
+                }, status=400)
+            
+            temp_target_db = temp_uploaded_path
+
+        # 5. Overwrite main database file
+        connections.close_all()
+
+        shutil.copy2(temp_target_db, db_path)
+
+        for ext in ["-wal", "-shm"]:
+            wal_shm_path = f"{db_path}{ext}"
+            if os.path.exists(wal_shm_path):
+                try:
+                    os.remove(wal_shm_path)
+                except Exception:
+                    pass
+
+        # Cleanup temp files
+        for p in [temp_uploaded_path, temp_target_db]:
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except Exception:
+                    pass
+
+        # 6. Ensure superuser credentials are set in the newly restored database
+        admin_username = request.POST.get('admin_username', '').strip() or 'SA'
+        admin_password = request.POST.get('admin_password', '').strip() or 'sqlforgeeks.ai'
+
+        try:
+            from django.contrib.auth.models import User
+            connections.close_all()
+            user_obj, _ = User.objects.get_or_create(
+                username=admin_username,
+                defaults={'is_superuser': True, 'is_staff': True, 'is_active': True}
+            )
+            user_obj.is_superuser = True
+            user_obj.is_staff = True
+            user_obj.is_active = True
+            user_obj.set_password(admin_password)
+            user_obj.save()
+        except Exception as user_err:
+            pass
+
+        return JsonResponse({
+            "status": "success",
+            "message": f"Database restored successfully from '{uploaded_file.name}'!",
+            "admin_username": admin_username,
+            "admin_password": admin_password
+        })
+
+    except Exception as e:
+        return JsonResponse({"status": "error", "message": f"Failed to restore database: {str(e)}"}, status=500)
+
+
+

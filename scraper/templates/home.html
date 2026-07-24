@@ -7,6 +7,8 @@
   <a href="{% url 'leads' %}" class="btn btn-secondary btn-sm">👤 All Leads</a>
   <a href="{% url 'new_campaign' %}" class="btn btn-primary btn-sm">+ New Campaign</a>
   <button class="btn btn-ghost btn-sm" onclick="triggerManualBackup(this)" title="Create database backup">💾 Backup</button>
+  <button class="btn btn-ghost btn-sm" id="btnRestoreDB" onclick="triggerManualRestore()" title="Restore database from backup or SQL file">📂 Restore</button>
+  <input type="file" id="restoreFileInput" accept=".sql,.db,.sqlite,.sqlite3,*" style="display:none;" onchange="handleRestoreFileSelected(this)">
 {% endblock %}
 
 {% block content %}
@@ -725,6 +727,70 @@ function triggerManualBackup(btn) {
   });
 }
 
+// ── Manual Restore Trigger & Modal ──────────────────────────────────────────
+function triggerManualRestore() {
+  const modal = document.getElementById('restoreModal');
+  if (modal) modal.style.display = 'flex';
+}
+
+function closeRestoreModal() {
+  const modal = document.getElementById('restoreModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function submitRestoreModal() {
+  const fileInput = document.getElementById('modalRestoreFileInput');
+  if (!fileInput.files || fileInput.files.length === 0) {
+    alert('⚠️ Please select a backup or .sql file first.');
+    return;
+  }
+
+  const file = fileInput.files[0];
+  const adminUsername = document.getElementById('modalAdminUsername').value.trim();
+  const adminPassword = document.getElementById('modalAdminPassword').value.trim();
+
+  const confirmMsg = `⚠️ WARNING: Restoring will overwrite your current database with '${file.name}'.\n\nA safety backup of your current database will be saved automatically.\n\nSuperuser credential to set:\nUsername: ${adminUsername || 'SA (default)'}\nPassword: ${adminPassword ? '••••••••' : '(default password)'}\n\nDo you want to proceed?`;
+
+  if (!confirm(confirmMsg)) {
+    return;
+  }
+
+  const submitBtn = document.getElementById('btnSubmitRestoreModal');
+  const origBtnText = submitBtn.innerHTML;
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = '📂 Restoring...';
+
+  const formData = new FormData();
+  formData.append('backup_file', file);
+  if (adminUsername) formData.append('admin_username', adminUsername);
+  if (adminPassword) formData.append('admin_password', adminPassword);
+
+  fetch('{% url "restore_database" %}', {
+    method: 'POST',
+    headers: {
+      'X-CSRFToken': '{{ csrf_token }}'
+    },
+    body: formData
+  })
+  .then(r => r.json())
+  .then(data => {
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = origBtnText;
+    if (data.status === 'success') {
+      closeRestoreModal();
+      alert(`✅ Database restored successfully from '${file.name}'!\n\n🔑 Superuser Account Configured:\n• Username: ${data.admin_username}\n\nClick OK to reload dashboard.`);
+      location.reload();
+    } else {
+      alert('❌ Restore failed: ' + (data.message || 'Unknown error'));
+    }
+  })
+  .catch(err => {
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = origBtnText;
+    alert('❌ Error restoring database: ' + err);
+  });
+}
+
 function showToast(msg) {
   const t = document.createElement('div');
   t.textContent = msg;
@@ -734,4 +800,47 @@ function showToast(msg) {
   setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2500);
 }
 </script>
+
+<!-- ── Restore Modal Markup ────────────────────────────────────────────────── -->
+<div id="restoreModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.5); z-index:99999; align-items:center; justify-content:center;">
+  <div style="background:#ffffff; border-radius:12px; padding:24px; max-width:480px; width:92%; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); font-family:inherit;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h3 style="margin:0; font-size:18px; font-weight:700; color:#0f172a;">📂 Restore Database</h3>
+      <button type="button" onclick="closeRestoreModal()" style="background:none; border:none; font-size:20px; cursor:pointer; color:#64748b;">&times;</button>
+    </div>
+    
+    <p style="font-size:13px; color:#475569; margin:0 0 16px 0; line-height:1.4;">
+      Select a <code>.sql</code> script or SQLite backup file. A safety backup of your existing database will be saved automatically before restoring.
+    </p>
+
+    <div style="margin-bottom:16px;">
+      <label style="display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:6px;">Select Backup File (.sql / .db)</label>
+      <input type="file" id="modalRestoreFileInput" accept=".sql,.db,.sqlite,.sqlite3,*" style="width:100%; padding:8px; font-size:13px; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box;">
+    </div>
+
+    <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; margin-bottom:20px;">
+      <div style="font-size:12px; font-weight:700; color:#1e293b; margin-bottom:10px;">🔑 Set Superuser Credentials for Restored DB (Optional)</div>
+      <div style="display:flex; gap:12px;">
+        <div style="flex:1;">
+          <label style="display:block; font-size:11px; font-weight:600; color:#475569; margin-bottom:4px;">Username</label>
+          <input type="text" id="modalAdminUsername" value="" placeholder="Username (Default: SA)" autocomplete="off" style="width:100%; padding:8px; font-size:13px; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box;">
+        </div>
+        <div style="flex:1;">
+          <label style="display:block; font-size:11px; font-weight:600; color:#475569; margin-bottom:4px;">Password</label>
+          <input type="password" id="modalAdminPassword" value="" placeholder="Password" autocomplete="new-password" style="width:100%; padding:8px; font-size:13px; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box;">
+        </div>
+      </div>
+
+      <div style="font-size:11px; color:#64748b; margin-top:8px;">
+        Leave blank to use default system superuser credentials.
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; gap:10px;">
+      <button type="button" class="btn btn-secondary btn-sm" onclick="closeRestoreModal()">Cancel</button>
+      <button type="button" class="btn btn-primary btn-sm" id="btnSubmitRestoreModal" onclick="submitRestoreModal()">🚀 Start Restore</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
+

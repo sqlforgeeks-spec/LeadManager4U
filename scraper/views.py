@@ -941,11 +941,21 @@ def run_bing_maps_scrape(job_id, search_phrase, locations, max_results, auto_cam
                 job.save(update_fields=["last_error", "processed_locations", "updated_at"])
                 _log(job, f"[BingMaps] Error scraping {loc}: {exc}", level="ERROR")
 
-        job.status = "failed" if (total_results == 0 and had_errors) else ("completed_with_errors" if had_errors else "completed")
+        # Mark failed if any errors occurred AND not all locations were processed
+        # (partial completion — user should retry the remaining cities).
+        # Only mark completed_with_errors when ALL locations were attempted but some had internal errors.
+        all_locations_attempted = (job.processed_locations >= job.total_locations)
+        if had_errors and not all_locations_attempted:
+            job.status = "failed"
+        elif had_errors:
+            job.status = "completed_with_errors"
+        else:
+            job.status = "completed"
         job.save(update_fields=["status", "updated_at"])
         _log(job, f"[BingMaps] Job {job.status.replace('_', ' ')}.")
 
-        if job.status in {"completed", "completed_with_errors"} and auto_campaign:
+        # Only auto-create campaign when ALL locations completed successfully.
+        if job.status == "completed" and auto_campaign:
             _auto_create_campaign(job)
 
     except Exception as exc:
@@ -1154,11 +1164,21 @@ def run_scrape(job_id, search_phrase, locations, domain, max_results, auto_campa
         db_stop.set()
         writer_thread.join(timeout=5)
 
-        job.status = "failed" if (total_results == 0 and had_errors) else ("completed_with_errors" if had_errors else "completed")
+        # Mark failed if any errors occurred AND not all locations were processed
+        # (partial completion — user should retry the remaining cities).
+        # Only mark completed_with_errors when ALL locations were attempted but some had internal errors.
+        all_locations_attempted = (job.processed_locations >= job.total_locations)
+        if had_errors and not all_locations_attempted:
+            job.status = "failed"
+        elif had_errors:
+            job.status = "completed_with_errors"
+        else:
+            job.status = "completed"
         job.save(update_fields=["status", "updated_at"])
         _log(job, f"Job {job.status.replace('_', ' ')}.")
 
-        if job.status in {"completed", "completed_with_errors"} and auto_campaign:
+        # Only auto-create campaign when ALL locations completed successfully.
+        if job.status == "completed" and auto_campaign:
             _auto_create_campaign(job)
 
     except Exception as exc:
@@ -1433,7 +1453,7 @@ def search_job_detail(request, job_id):
         "progress": progress,
         "is_running": job.status in {"queued", "running"},
         "can_pause": job.status == "running",
-        "can_resume": job.status in {"paused", "failed"},
+        "can_resume": job.status in {"paused", "failed", "completed_with_errors"},
         "is_paused": job.status == "paused",
         "global_stats": _global_stats(),
         "notifications": _get_notifications(),
@@ -1874,7 +1894,7 @@ def job_detail(request, job_id):
         "progress": progress,
         "is_running": is_running,
         "can_pause": job.status == "running",
-        "can_resume": job.status in {"paused", "failed"},
+        "can_resume": job.status in {"paused", "failed", "completed_with_errors"},
         "is_paused": job.status == "paused",
         "domains": DOMAINS,
         "recent_jobs": recent_jobs,
@@ -2499,7 +2519,7 @@ def pause_job(request, job_id):
 @require_POST
 def resume_job(request, job_id):
     job = get_object_or_404(ScrapeJob, id=job_id)
-    if job.status in {"paused", "failed"}:
+    if job.status in {"paused", "failed", "completed_with_errors"}:
         resume_mode = request.POST.get("resume_mode", "continue")
         if resume_mode == "restart_all":
             job.processed_locations = 0

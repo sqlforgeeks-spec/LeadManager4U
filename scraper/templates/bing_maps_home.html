@@ -118,11 +118,16 @@
               {% elif job.status == "paused" %}
                 <form method="post" action="{% url 'resume_job' job.id %}">{% csrf_token %}<input type="hidden" name="resume_mode" value="continue"><button type="submit" class="btn btn-success btn-sm">Resume</button></form>
                 <form method="post" action="{% url 'stop_job' job.id %}">{% csrf_token %}<button type="submit" class="btn btn-danger btn-sm">Stop</button></form>
-              {% elif job.status in "completed,completed_with_errors" %}
+              {% elif job.status == "completed" %}
                 <a href="{% url 'new_campaign' %}?job_id={{ job.id }}" class="btn btn-secondary btn-sm">✉ Campaign</a>
                 <form method="post" action="{% url 'delete_job' job.id %}" onsubmit="return confirm('Delete job #{{ job.id }} and all its leads?')">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">🗑</button></form>
+              {% elif job.status == "completed_with_errors" %}
+                <a href="{% url 'new_campaign' %}?job_id={{ job.id }}" class="btn btn-secondary btn-sm">✉ Campaign</a>
+                <form method="post" action="{% url 'resume_job' job.id %}">{% csrf_token %}<input type="hidden" name="resume_mode" value="restart_all"><button type="submit" class="btn btn-ghost btn-sm" title="Retry all locations from scratch">↺ Retry</button></form>
+                <form method="post" action="{% url 'delete_job' job.id %}" onsubmit="return confirm('Delete job #{{ job.id }} and all its leads?')">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">🗑</button></form>
               {% elif job.status == "failed" %}
-                <form method="post" action="{% url 'resume_job' job.id %}">{% csrf_token %}<input type="hidden" name="resume_mode" value="restart_all"><button type="submit" class="btn btn-secondary btn-sm">Retry</button></form>
+                <form method="post" action="{% url 'resume_job' job.id %}">{% csrf_token %}<input type="hidden" name="resume_mode" value="continue"><button type="submit" class="btn btn-secondary btn-sm">▶ Continue</button></form>
+                <form method="post" action="{% url 'resume_job' job.id %}">{% csrf_token %}<input type="hidden" name="resume_mode" value="restart_all"><button type="submit" class="btn btn-ghost btn-sm">↺ Restart</button></form>
                 <form method="post" action="{% url 'delete_job' job.id %}" onsubmit="return confirm('Delete job #{{ job.id }}?')">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">🗑</button></form>
               {% else %}
                 <span class="text-muted" style="font-size:12px;">{{ job.get_status_display }}</span>

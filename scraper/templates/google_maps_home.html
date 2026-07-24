@@ -41,7 +41,7 @@
         <label class="form-label">Google Domain</label>
         <select name="domain" class="form-select">
           {% for code, name in domains %}
-            <option value="{{ code }}" {% if code == "com" %}selected{% endif %}>{{ name }}</option>
+            <option value="{{ code }}" {% if code == "com" %}selected{% endif %}>{{ name }} — google.{{ code }}</option>
           {% endfor %}
         </select>
       </div>
@@ -111,12 +111,17 @@
               {% elif job.status == "queued" %}
                 <form method="post" action="{% url 'stop_job' job.id %}">{% csrf_token %}<button type="submit" class="btn btn-danger btn-sm">Cancel</button></form>
               {% elif job.status == "failed" %}
-                <form method="post" action="{% url 'resume_job' job.id %}">{% csrf_token %}<input type="hidden" name="resume_mode" value="continue"><button type="submit" class="btn btn-secondary btn-sm">Retry</button></form>
+                <form method="post" action="{% url 'resume_job' job.id %}">{% csrf_token %}<input type="hidden" name="resume_mode" value="continue"><button type="submit" class="btn btn-secondary btn-sm">▶ Continue</button></form>
+                <form method="post" action="{% url 'resume_job' job.id %}">{% csrf_token %}<input type="hidden" name="resume_mode" value="restart_all"><button type="submit" class="btn btn-ghost btn-sm">↺ Restart</button></form>
+                <form method="post" action="{% url 'delete_job' job.id %}" onsubmit="return confirm('Delete job #{{ job.id }} and all its leads?')">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">🗑</button></form>
+              {% elif job.status == "completed_with_errors" %}
+                <a href="{% url 'new_campaign' %}?job_id={{ job.id }}" class="btn btn-secondary btn-sm">✉ Campaign</a>
+                <form method="post" action="{% url 'resume_job' job.id %}">{% csrf_token %}<input type="hidden" name="resume_mode" value="restart_all"><button type="submit" class="btn btn-ghost btn-sm" title="Retry all locations from scratch">↺ Retry</button></form>
+                <form method="post" action="{% url 'delete_job' job.id %}" onsubmit="return confirm('Delete job #{{ job.id }} and all its leads?')">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">🗑</button></form>
+              {% elif job.status == "completed" %}
+                <a href="{% url 'new_campaign' %}?job_id={{ job.id }}" class="btn btn-secondary btn-sm">✉ Campaign</a>
                 <form method="post" action="{% url 'delete_job' job.id %}" onsubmit="return confirm('Delete job #{{ job.id }} and all its leads?')">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">🗑</button></form>
               {% else %}
-                {% if job.status in "completed,completed_with_errors" %}
-                  <a href="{% url 'new_campaign' %}?job_id={{ job.id }}" class="btn btn-secondary btn-sm">✉ Campaign</a>
-                {% endif %}
                 <form method="post" action="{% url 'delete_job' job.id %}" onsubmit="return confirm('Delete job #{{ job.id }} and all its leads?')">{% csrf_token %}<button type="submit" class="btn btn-ghost btn-sm text-danger">🗑</button></form>
               {% endif %}
             </div>

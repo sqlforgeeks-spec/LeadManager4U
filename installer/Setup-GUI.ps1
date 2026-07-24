@@ -3,7 +3,7 @@
     LeadManager4U.ai — GUI Setup Wizard & Maintenance Tool
 .DESCRIPTION
     Native Windows Forms GUI interface for installing, upgrading, and uninstalling LeadManager4U.
-    Allows custom install path selection, desktop shortcut creation, and service management.
+    Allows custom install path selection, desktop shortcut creation, HTTPS (SSL) setup, and service management.
 .NOTES
     Must run as Administrator.
 #>
@@ -38,10 +38,10 @@ if (-not (Test-IsAdmin)) {
 $SCRIPT_DIR  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $PROJECT_DIR = Split-Path -Parent $SCRIPT_DIR
 
-# Default config
 $DEFAULT_INSTALL_DIR = "C:\LeadManager4U"
 $SERVICE_NAME        = "LeadManager4U"
-$PORT                = 80
+$PORT_HTTP           = 80
+$PORT_HTTPS          = 443
 $HOST_NAME           = "lm.ai"
 $PYTHON_VER          = "3.12.8"
 $NSSM_VER            = "2.24"
@@ -54,7 +54,7 @@ $NSSM_VER            = "2.24"
 
 $form               = New-Object System.Windows.Forms.Form
 $form.Text          = "LeadManager4U.ai Setup Wizard"
-$form.Size          = New-Object System.Drawing.Size(680, 580)
+$form.Size          = New-Object System.Drawing.Size(680, 610)
 $form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
 $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedSingle
 $form.MaximizeBox   = $false
@@ -74,7 +74,7 @@ $lblTitle.Location  = New-Object System.Drawing.Point(20, 15)
 $lblTitle.AutoSize  = $true
 
 $lblSubtitle           = New-Object System.Windows.Forms.Label
-$lblSubtitle.Text      = "Local URL: http://lm.ai | One-Click Windows Deployment"
+$lblSubtitle.Text      = "Local URL: https://lm.ai | One-Click Windows Deployment"
 $lblSubtitle.Font      = New-Object System.Drawing.Font("Segoe UI", 9)
 $lblSubtitle.ForeColor = [System.Drawing.Color]::FromArgb(148, 163, 184)
 $lblSubtitle.Location  = New-Object System.Drawing.Point(20, 45)
@@ -89,7 +89,7 @@ $grpOptions          = New-Object System.Windows.Forms.GroupBox
 $grpOptions.Text     = " Installation Settings "
 $grpOptions.Font     = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
 $grpOptions.Location = New-Object System.Drawing.Point(20, 90)
-$grpOptions.Size     = New-Object System.Drawing.Size(625, 165)
+$grpOptions.Size     = New-Object System.Drawing.Size(625, 195)
 
 # Label: Install Path
 $lblPath          = New-Object System.Windows.Forms.Label
@@ -123,12 +123,21 @@ $btnBrowse.Add_Click({
 })
 $grpOptions.Controls.Add($btnBrowse)
 
+# Checkbox: HTTPS Enable
+$chkHttps          = New-Object System.Windows.Forms.CheckBox
+$chkHttps.Text     = "Enable HTTPS (https://lm.ai) with Trusted SSL Certificate"
+$chkHttps.Font     = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Regular)
+$chkHttps.Checked  = $true
+$chkHttps.Location = New-Object System.Drawing.Point(15, 85)
+$chkHttps.Size     = New-Object System.Drawing.Size(380, 25)
+$grpOptions.Controls.Add($chkHttps)
+
 # Checkbox: Desktop Shortcut
 $chkShortcut          = New-Object System.Windows.Forms.CheckBox
-$chkShortcut.Text     = "Create Desktop Shortcut (http://lm.ai)"
+$chkShortcut.Text     = "Create Desktop Shortcut (https://lm.ai)"
 $chkShortcut.Font     = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Regular)
 $chkShortcut.Checked  = $true
-$chkShortcut.Location = New-Object System.Drawing.Point(15, 85)
+$chkShortcut.Location = New-Object System.Drawing.Point(15, 115)
 $chkShortcut.Size     = New-Object System.Drawing.Size(280, 25)
 $grpOptions.Controls.Add($chkShortcut)
 
@@ -137,16 +146,16 @@ $chkService          = New-Object System.Windows.Forms.CheckBox
 $chkService.Text     = "Register Windows Service (Auto-start on Windows boot)"
 $chkService.Font     = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Regular)
 $chkService.Checked  = $true
-$chkService.Location = New-Object System.Drawing.Point(15, 115)
+$chkService.Location = New-Object System.Drawing.Point(15, 145)
 $chkService.Size     = New-Object System.Drawing.Size(380, 25)
 $grpOptions.Controls.Add($chkService)
 
 # Checkbox: Open Browser
 $chkOpenBrowser          = New-Object System.Windows.Forms.CheckBox
-$chkOpenBrowser.Text     = "Launch http://lm.ai in browser when complete"
+$chkOpenBrowser.Text     = "Launch in browser when complete"
 $chkOpenBrowser.Font     = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Regular)
 $chkOpenBrowser.Checked  = $true
-$chkOpenBrowser.Location = New-Object System.Drawing.Point(310, 85)
+$chkOpenBrowser.Location = New-Object System.Drawing.Point(310, 115)
 $chkOpenBrowser.Size     = New-Object System.Drawing.Size(300, 25)
 $grpOptions.Controls.Add($chkOpenBrowser)
 
@@ -154,7 +163,7 @@ $form.Controls.Add($grpOptions)
 
 # Progress Bar
 $progressBar          = New-Object System.Windows.Forms.ProgressBar
-$progressBar.Location = New-Object System.Drawing.Point(20, 268)
+$progressBar.Location = New-Object System.Drawing.Point(20, 298)
 $progressBar.Size     = New-Object System.Drawing.Size(625, 20)
 $progressBar.Style    = [System.Windows.Forms.ProgressBarStyle]::Continuous
 $progressBar.Value    = 0
@@ -162,7 +171,7 @@ $form.Controls.Add($progressBar)
 
 # Log Panel (RichTextBox)
 $rtbLog            = New-Object System.Windows.Forms.RichTextBox
-$rtbLog.Location   = New-Object System.Drawing.Point(20, 298)
+$rtbLog.Location   = New-Object System.Drawing.Point(20, 328)
 $rtbLog.Size       = New-Object System.Drawing.Size(625, 175)
 $rtbLog.ReadOnly   = $true
 $rtbLog.Font       = New-Object System.Drawing.Font("Consolas", 8.5)
@@ -194,7 +203,7 @@ $btnInstall.Font     = New-Object System.Drawing.Font("Segoe UI", 10, [System.Dr
 $btnInstall.BackColor= [System.Drawing.Color]::FromArgb(16, 185, 129)
 $btnInstall.ForeColor= [System.Drawing.Color]::White
 $btnInstall.FlatStyle= [System.Windows.Forms.FlatStyle]::Flat
-$btnInstall.Location = New-Object System.Drawing.Point(20, 488)
+$btnInstall.Location = New-Object System.Drawing.Point(20, 518)
 $btnInstall.Size     = New-Object System.Drawing.Size(180, 38)
 $form.Controls.Add($btnInstall)
 
@@ -204,26 +213,27 @@ $btnUninstall.Font     = New-Object System.Drawing.Font("Segoe UI", 10, [System.
 $btnUninstall.BackColor= [System.Drawing.Color]::FromArgb(239, 68, 68)
 $btnUninstall.ForeColor= [System.Drawing.Color]::White
 $btnUninstall.FlatStyle= [System.Windows.Forms.FlatStyle]::Flat
-$btnUninstall.Location = New-Object System.Drawing.Point(220, 488)
+$btnUninstall.Location = New-Object System.Drawing.Point(220, 518)
 $btnUninstall.Size     = New-Object System.Drawing.Size(160, 38)
 $form.Controls.Add($btnUninstall)
 
 $btnClose          = New-Object System.Windows.Forms.Button
 $btnClose.Text     = "Close"
 $btnClose.Font     = New-Object System.Drawing.Font("Segoe UI", 10)
-$btnClose.Location = New-Object System.Drawing.Point(545, 488)
+$btnClose.Location = New-Object System.Drawing.Point(545, 518)
 $btnClose.Size     = New-Object System.Drawing.Size(100, 38)
 $btnClose.Add_Click({ $form.Close() })
 $form.Controls.Add($btnClose)
 
 # Controls Lock/Unlock
 function Set-ControlsEnabled([bool]$enabled) {
-    $btnInstall.Enabled   = $enabled
-    $btnUninstall.Enabled = $enabled
-    $btnBrowse.Enabled    = $enabled
-    $txtPath.Enabled      = $enabled
-    $chkShortcut.Enabled  = $enabled
-    $chkService.Enabled   = $enabled
+    $btnInstall.Enabled     = $enabled
+    $btnUninstall.Enabled   = $enabled
+    $btnBrowse.Enabled      = $enabled
+    $txtPath.Enabled        = $enabled
+    $chkHttps.Enabled       = $enabled
+    $chkShortcut.Enabled    = $enabled
+    $chkService.Enabled     = $enabled
     $chkOpenBrowser.Enabled = $enabled
 }
 
@@ -242,11 +252,15 @@ $btnInstall.Add_Click({
     $progressBar.Value = 0
     $rtbLog.Clear()
 
+    $targetUrl = if ($chkHttps.Checked) { "https://lm.ai" } else { "http://lm.ai" }
+
     Append-Log "Starting LeadManager4U Setup..." "STEP"
     Append-Log "Target Path: $installDir" "INFO"
+    Append-Log "Target URL:  $targetUrl" "INFO"
 
     $venvDir   = Join-Path $installDir ".venv"
     $toolsDir  = Join-Path $installDir "tools"
+    $certsDir  = Join-Path $installDir "certs"
     $nssmExe   = Join-Path $toolsDir "nssm.exe"
     $logsDir   = Join-Path $installDir "logs"
     $isUpgrade = Test-Path (Join-Path $installDir "manage.py")
@@ -259,7 +273,7 @@ $btnInstall.Add_Click({
 
     # 1. Python Check / Download
     $progressBar.Value = 10
-    Append-Log "Phase 1/7: Checking Python Runtime..." "STEP"
+    Append-Log "Phase 1/8: Checking Python Runtime..." "STEP"
 
     $pythonCmd = $null
     foreach ($cmd in @("python", "python3")) {
@@ -308,8 +322,8 @@ $btnInstall.Add_Click({
     }
 
     # 2. Deploy Project Files
-    $progressBar.Value = 25
-    Append-Log "Phase 2/7: Deploying project files to $installDir..." "STEP"
+    $progressBar.Value = 20
+    Append-Log "Phase 2/8: Deploying project files to $installDir..." "STEP"
     if (-not (Test-Path $installDir)) {
         New-Item -ItemType Directory -Path $installDir -Force | Out-Null
     }
@@ -325,7 +339,7 @@ $btnInstall.Add_Click({
 
     $roboSrc  = "`"$PROJECT_DIR`""
     $roboDst  = "`"$installDir`""
-    $roboDirs = ".git __pycache__ installer .venv node_modules tools logs attached_assets"
+    $roboDirs = ".git __pycache__ installer .venv node_modules tools logs attached_assets certs"
     $roboFiles= ".replit replit.nix replit.md"
     $roboArgs = "$roboSrc $roboDst /E /XD $roboDirs /XF $roboFiles"
     if ($isUpgrade) { $roboArgs += " /XF db.sqlite3 db.sqlite3-wal db.sqlite3-shm" }
@@ -335,26 +349,95 @@ $btnInstall.Add_Click({
     Append-Log "Project files deployed." "OK"
 
     # 3. Virtualenv & Dependencies
-    $progressBar.Value = 45
-    Append-Log "Phase 3/7: Setting up Python virtual environment..." "STEP"
+    $progressBar.Value = 35
+    Append-Log "Phase 3/8: Setting up Python virtual environment..." "STEP"
     $venvPython = Join-Path $venvDir "Scripts\python.exe"
     $venvPip    = Join-Path $venvDir "Scripts\pip.exe"
 
     if (-not (Test-Path $venvPython)) {
         & $pythonCmd -m venv $venvDir 2>&1 | Out-Null
     }
-    Append-Log "Installing dependencies (Django, Waitress, Selenium)..." "INFO"
+    Append-Log "Installing dependencies (Django, Waitress, Cryptography, Selenium)..." "INFO"
     $reqFile = Join-Path $installDir "requirements.txt"
-    & $venvPip install -r $reqFile waitress --quiet 2>&1 | Out-Null
+    & $venvPip install -r $reqFile waitress cryptography --quiet 2>&1 | Out-Null
     Append-Log "All Python packages installed." "OK"
 
-    # 4. Django Migration & Static
+    # 4. HTTPS Certificate Generation & Registration
+    $progressBar.Value = 50
+    if ($chkHttps.Checked) {
+        Append-Log "Phase 4/8: Generating trusted SSL Certificate for https://lm.ai..." "STEP"
+        if (-not (Test-Path $certsDir)) { New-Item -ItemType Directory -Path $certsDir -Force | Out-Null }
+
+        $crtPath = Join-Path $certsDir "lm.ai.crt"
+        $keyPath = Join-Path $certsDir "lm.ai.key"
+
+        # Python script to generate SSL cert & key using cryptography package
+        $pyCertGen = @"
+import datetime, ipaddress, os
+from cryptography import x509
+from cryptography.x509.oid import NameOID
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+
+key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "lm.ai")])
+cert = x509.CertificateBuilder().subject_name(
+    name
+).issuer_name(
+    name
+).public_key(
+    key.public_key()
+).serial_number(
+    x509.random_serial_number()
+).not_valid_before(
+    datetime.datetime.now(datetime.timezone.utc)
+).not_valid_after(
+    datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=3650)
+).add_extension(
+    x509.SubjectAlternativeName([
+        x509.DNSName("lm.ai"),
+        x509.DNSName("localhost"),
+        x509.IPAddress(ipaddress.ip_address("127.0.0.1"))
+    ]),
+    critical=False,
+).sign(key, hashes.SHA256())
+
+with open(r"$crtPath", "wb") as f:
+    f.write(cert.public_bytes(serialization.Encoding.PEM))
+with open(r"$keyPath", "wb") as f:
+    f.write(key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption()
+    ))
+print("SSL_GEN_OK")
+"@
+
+        $certScriptPath = Join-Path $certsDir "gen_cert.py"
+        Set-Content -Path $certScriptPath -Value $pyCertGen -Encoding UTF8 -Force
+        $certRes = & $venvPython $certScriptPath 2>&1
+        if ("$certRes" -match "SSL_GEN_OK") {
+            Append-Log "SSL Certificate and Key generated." "OK"
+
+            # Register Certificate into Windows Trusted Root store
+            try {
+                Import-Certificate -FilePath $crtPath -CertStoreLocation "cert:\LocalMachine\Root" -ErrorAction Stop | Out-Null
+                Append-Log "SSL Certificate installed into Windows Trusted Root Store." "OK"
+            } catch {
+                Append-Log "Trusted root store import warning: $_" "WARN"
+            }
+        } else {
+            Append-Log "SSL cert generation notice: $certRes" "WARN"
+        }
+    }
+
+    # 5. Django Migration & Static
     $progressBar.Value = 65
-    Append-Log "Phase 4/7: Configuring Django database and static files..." "STEP"
+    Append-Log "Phase 5/8: Configuring Django database & static files..." "STEP"
     Push-Location $installDir
     try {
         $env:DJANGO_SETTINGS_MODULE = "maps_scraper.settings"
-        $env:SITE_URL = "http://$HOST_NAME"
+        $env:SITE_URL = $targetUrl
         & $venvPython manage.py migrate --run-syncdb 2>&1 | Out-Null
         Append-Log "Database migrations applied." "OK"
         & $venvPython manage.py collectstatic --noinput 2>&1 | Out-Null
@@ -371,9 +454,9 @@ $btnInstall.Add_Click({
         Pop-Location
     }
 
-    # 5. Host Mapping (lm.ai)
+    # 6. Host Mapping (lm.ai)
     $progressBar.Value = 75
-    Append-Log "Phase 5/7: Mapping http://lm.ai -> 127.0.0.1..." "STEP"
+    Append-Log "Phase 6/8: Mapping http://lm.ai & https://lm.ai -> 127.0.0.1..." "STEP"
     $hostsPath = Join-Path $env:SystemRoot "System32\drivers\etc\hosts"
     $hostsContent = Get-Content $hostsPath -Raw -ErrorAction SilentlyContinue
     if ($hostsContent -notmatch "(?m)^\s*127\.0\.0\.1\s+lm\.ai") {
@@ -388,10 +471,10 @@ $btnInstall.Add_Click({
     }
     & ipconfig /flushdns 2>&1 | Out-Null
 
-    # 6. Service / Startup Registration
+    # 7. Windows Service Registration
     $progressBar.Value = 85
     if ($chkService.Checked) {
-        Append-Log "Phase 6/7: Registering LeadManager4U Windows Service..." "STEP"
+        Append-Log "Phase 7/8: Registering LeadManager4U Windows Service..." "STEP"
         foreach ($d in @($toolsDir, $logsDir)) {
             if (-not (Test-Path $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
         }
@@ -414,28 +497,45 @@ $btnInstall.Add_Click({
         }
 
         $runServerPath = Join-Path $installDir "run-server.py"
-        $runServerPy = @'
-import os
-import sys
 
-SERVICE_DIR = r"C:\LeadManager4U"
+        # Generate run-server.py supporting HTTPS & HTTP
+        $crtPathPy = (Join-Path $certsDir "lm.ai.crt").Replace('\','/')
+        $keyPathPy = (Join-Path $certsDir "lm.ai.key").Replace('\','/')
+
+        $runServerPy = @"
+import os, sys, threading
+SERVICE_DIR = r"$installDir"
 os.chdir(SERVICE_DIR)
 sys.path.insert(0, SERVICE_DIR)
-
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "maps_scraper.settings")
-os.environ["SITE_URL"] = "http://lm.ai"
-
+os.environ["SITE_URL"] = "$targetUrl"
 from django.core.wsgi import get_wsgi_application
 application = get_wsgi_application()
-
 from django.conf import settings as django_settings
-if "http://lm.ai" not in django_settings.CSRF_TRUSTED_ORIGINS:
-    django_settings.CSRF_TRUSTED_ORIGINS.append("http://lm.ai")
+for _o in ["https://lm.ai", "http://lm.ai"]:
+    if _o not in django_settings.CSRF_TRUSTED_ORIGINS:
+        django_settings.CSRF_TRUSTED_ORIGINS.append(_o)
 
 from waitress import serve
 
+use_ssl = os.path.exists(r"$crtPathPy") and os.path.exists(r"$keyPathPy")
+
+if use_ssl:
+    print("Starting HTTPS server on https://lm.ai:443 ...")
+    # Start HTTPS thread
+    t_https = threading.Thread(
+        target=serve,
+        kwargs=dict(
+            app=application, host="0.0.0.0", port=443, url_scheme="https",
+            ssl_certificate=r"$crtPathPy", ssl_private_key=r"$keyPathPy", threads=4
+        ),
+        daemon=True
+    )
+    t_https.start()
+
+print("Starting HTTP server on http://lm.ai:80 ...")
 serve(application, host="0.0.0.0", port=80, threads=4, url_scheme="http")
-'@
+"@
         Set-Content -Path $runServerPath -Value $runServerPy -Encoding UTF8 -Force
 
         if (Test-Path $nssmExe) {
@@ -453,31 +553,31 @@ serve(application, host="0.0.0.0", port=80, threads=4, url_scheme="http")
         }
     }
 
-    # 7. Desktop Shortcut
+    # 8. Desktop Shortcut
     $progressBar.Value = 95
     if ($chkShortcut.Checked) {
         try {
             $dt = [Environment]::GetFolderPath("CommonDesktopDirectory")
             if (-not (Test-Path $dt)) { $dt = [Environment]::GetFolderPath("Desktop") }
-            "[InternetShortcut]`r`nURL=http://$HOST_NAME`r`nIconIndex=0`r`nIconFile=C:\Windows\System32\shell32.dll" | Set-Content -Path (Join-Path $dt "LeadManager4U.url") -Encoding ASCII -Force
-            Append-Log "Desktop shortcut created." "OK"
+            "[InternetShortcut]`r`nURL=$targetUrl`r`nIconIndex=0`r`nIconFile=C:\Windows\System32\shell32.dll" | Set-Content -Path (Join-Path $dt "LeadManager4U.url") -Encoding ASCII -Force
+            Append-Log "Desktop shortcut created -> $targetUrl" "OK"
         } catch {
             Append-Log "Shortcut creation warning: $_" "WARN"
         }
     }
 
     $progressBar.Value = 100
-    Append-Log "Phase 7/7: Setup Complete!" "STEP"
-    Append-Log "URL: http://lm.ai | Username: SA | Password: admin123" "OK"
+    Append-Log "Phase 8/8: Setup Complete!" "STEP"
+    Append-Log "URL: $targetUrl | Username: SA | Password: admin123" "OK"
 
     Set-ControlsEnabled $true
 
     if ($chkOpenBrowser.Checked) {
-        Start-Process "http://$HOST_NAME"
+        Start-Process $targetUrl
     }
 
     [System.Windows.Forms.MessageBox]::Show(
-        "LeadManager4U installation complete!`n`nApp URL: http://lm.ai`nAdmin Username: SA`nAdmin Password: admin123",
+        "LeadManager4U installation complete!`n`nApp URL: $targetUrl`nAdmin Username: SA`nAdmin Password: admin123",
         "Installation Complete",
         [System.Windows.Forms.MessageBoxButtons]::OK,
         [System.Windows.Forms.MessageBoxIcon]::Information
@@ -491,7 +591,7 @@ serve(application, host="0.0.0.0", port=80, threads=4, url_scheme="http")
 $btnUninstall.Add_Click({
     $installDir = $txtPath.Text.Trim()
     $confirm = [System.Windows.Forms.MessageBox]::Show(
-        "Are you sure you want to uninstall LeadManager4U?`n`nThis will remove the Windows Service and lm.ai host mapping.",
+        "Are you sure you want to uninstall LeadManager4U?`n`nThis will remove the Windows Service, lm.ai host mapping, and SSL certificate.",
         "Confirm Uninstallation",
         [System.Windows.Forms.MessageBoxButtons]::YesNo,
         [System.Windows.Forms.MessageBoxIcon]::Question
@@ -505,7 +605,7 @@ $btnUninstall.Add_Click({
     Append-Log "Starting Uninstallation..." "STEP"
 
     # Stop & Remove Service
-    $progressBar.Value = 30
+    $progressBar.Value = 25
     $nssmExe = Join-Path $installDir "tools\nssm.exe"
     $svc = Get-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
     if ($svc) {
@@ -519,8 +619,18 @@ $btnUninstall.Add_Click({
         Append-Log "Windows Service removed." "OK"
     }
 
+    # Remove SSL Cert from Windows Certificate Store
+    $progressBar.Value = 50
+    try {
+        Get-ChildItem "cert:\LocalMachine\Root" | Where-Object { $_.Subject -match "CN=lm.ai" } | Remove-Item -Force -ErrorAction SilentlyContinue
+        Get-ChildItem "cert:\LocalMachine\My" | Where-Object { $_.Subject -match "CN=lm.ai" } | Remove-Item -Force -ErrorAction SilentlyContinue
+        Append-Log "SSL Certificate removed from Windows store." "OK"
+    } catch {
+        Append-Log "Cert cleanup notice: $_" "WARN"
+    }
+
     # Remove Hosts Mapping
-    $progressBar.Value = 60
+    $progressBar.Value = 70
     $hostsPath = Join-Path $env:SystemRoot "System32\drivers\etc\hosts"
     if (Test-Path $hostsPath) {
         $lines = Get-Content $hostsPath
@@ -531,7 +641,7 @@ $btnUninstall.Add_Click({
     }
 
     # Remove Desktop Shortcut
-    $progressBar.Value = 80
+    $progressBar.Value = 85
     foreach ($folder in @([Environment]::GetFolderPath("CommonDesktopDirectory"), [Environment]::GetFolderPath("Desktop"))) {
         $shortcut = Join-Path $folder "LeadManager4U.url"
         if (Test-Path $shortcut) { Remove-Item $shortcut -Force }

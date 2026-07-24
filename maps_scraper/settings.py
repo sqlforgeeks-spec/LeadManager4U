@@ -9,10 +9,12 @@ DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = ['*']
 
+_replit_dev = os.environ.get("REPLIT_DEV_DOMAIN", "")
 CSRF_TRUSTED_ORIGINS = [
     "http://lm.ai",
     "http://localhost",
     "http://127.0.0.1",
+    *(["https://" + _replit_dev] if _replit_dev else []),
 ]
 
 INSTALLED_APPS = [

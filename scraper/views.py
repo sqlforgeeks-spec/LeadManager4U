@@ -937,7 +937,8 @@ def run_bing_maps_scrape(job_id, search_phrase, locations, max_results, auto_cam
             except Exception as exc:
                 had_errors = True
                 job.last_error = str(exc)
-                job.processed_locations = idx
+                # Use idx-1 so retry resumes FROM this failed location, not the next one.
+                job.processed_locations = idx - 1
                 job.save(update_fields=["last_error", "processed_locations", "updated_at"])
                 _log(job, f"[BingMaps] Error scraping {loc}: {exc}", level="ERROR")
 
@@ -953,6 +954,10 @@ def run_bing_maps_scrape(job_id, search_phrase, locations, max_results, auto_cam
             job.status = "completed"
         job.save(update_fields=["status", "updated_at"])
         _log(job, f"[BingMaps] Job {job.status.replace('_', ' ')}.")
+
+        # Auto-dedup: remove duplicate email leads introduced by this job.
+        if job.status in {"completed", "completed_with_errors"}:
+            _auto_dedupe(job)
 
         # Only auto-create campaign when ALL locations completed successfully.
         if job.status == "completed" and auto_campaign:
@@ -1156,7 +1161,8 @@ def run_scrape(job_id, search_phrase, locations, domain, max_results, auto_campa
             except Exception as exc:
                 had_errors = True
                 job.last_error = str(exc)
-                job.processed_locations = idx
+                # Use idx-1 so retry resumes FROM this failed location, not the next one.
+                job.processed_locations = idx - 1
                 job.save(update_fields=["last_error", "processed_locations", "updated_at"])
                 _log(job, f"Error scraping {loc}: {exc}", level="ERROR")
 
@@ -1176,6 +1182,10 @@ def run_scrape(job_id, search_phrase, locations, domain, max_results, auto_campa
             job.status = "completed"
         job.save(update_fields=["status", "updated_at"])
         _log(job, f"Job {job.status.replace('_', ' ')}.")
+
+        # Auto-dedup: remove duplicate email leads introduced by this job.
+        if job.status in {"completed", "completed_with_errors"}:
+            _auto_dedupe(job)
 
         # Only auto-create campaign when ALL locations completed successfully.
         if job.status == "completed" and auto_campaign:
@@ -1239,6 +1249,39 @@ def _auto_create_campaign(job):
     except Exception as exc:
         try:
             _log(job, f"Auto-campaign creation failed: {exc}", level="WARN")
+        except Exception:
+            pass
+
+
+def _auto_dedupe(job):
+    """Remove duplicate leads (by email) introduced by this job, across all leads. Keeps oldest record."""
+    try:
+        from django.db.models import Min, Count
+        close_old_connections()
+        dupes = (
+            BusinessListing.objects
+            .filter(email__isnull=False)
+            .exclude(email="")
+            .values("email")
+            .annotate(cnt=Count("id"), min_id=Min("id"))
+            .filter(cnt__gt=1)
+        )
+        removed = 0
+        for d in dupes:
+            deleted_count, _ = (
+                BusinessListing.objects
+                .filter(email=d["email"])
+                .exclude(id=d["min_id"])
+                .delete()
+            )
+            removed += deleted_count
+        if removed:
+            _log(job, f"Auto-dedup removed {removed} duplicate lead(s) by email.")
+        else:
+            _log(job, "Auto-dedup: no duplicate emails found.")
+    except Exception as exc:
+        try:
+            _log(job, f"Auto-dedup failed: {exc}", level="WARN")
         except Exception:
             pass
 

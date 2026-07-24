@@ -27,6 +27,9 @@ $VENV_DIR      = Join-Path $INSTALL_DIR ".venv"
 $TOOLS_DIR     = Join-Path $INSTALL_DIR "tools"
 $NSSM_EXE      = Join-Path $TOOLS_DIR  "nssm.exe"
 $LOGS_DIR      = Join-Path $INSTALL_DIR "logs"
+$BACKUP_DIR    = Join-Path $INSTALL_DIR "backups"
+$LOGO_ICO      = Join-Path $SCRIPT_DIR "logo.ico"
+$INSTALLED_LOGO= Join-Path $INSTALL_DIR "logo.ico"
 
 $ErrorActionPreference  = "Continue"
 $ProgressPreference     = "SilentlyContinue"
@@ -216,17 +219,47 @@ if ($IS_UPGRADE) {
     }
 }
 
+if (-not (Test-Path $BACKUP_DIR)) {
+    New-Item -ItemType Directory -Path $BACKUP_DIR -Force | Out-Null
+}
+
+# Relocate any existing loose database backups from root to backups directory
+Get-ChildItem -Path $INSTALL_DIR -Filter "db.sqlite3.backup-*" -File -ErrorAction SilentlyContinue | ForEach-Object {
+    $dest = Join-Path $BACKUP_DIR $_.Name
+    if (-not (Test-Path $dest)) {
+        Move-Item $_.FullName $dest -Force -ErrorAction SilentlyContinue
+    } else {
+        Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
+    }
+    Write-Info "Relocated loose backup $($_.Name) -> backups/"
+}
+
 if ($IS_UPGRADE) {
     $dbFile = Join-Path $INSTALL_DIR "db.sqlite3"
     if (Test-Path $dbFile) {
         $ts       = Get-Date -Format "yyyyMMdd-HHmmss"
-        $dbBackup = Join-Path $INSTALL_DIR "db.sqlite3.backup-$ts"
+        $dbBackup = Join-Path $BACKUP_DIR "db.sqlite3.backup-$ts"
         Copy-Item $dbFile $dbBackup -Force
         foreach ($ext in @("-wal","-shm")) {
             $src = "$dbFile$ext"
             if (Test-Path $src) { Copy-Item $src "$dbBackup$ext" -Force }
         }
-        Write-OK "Database backed up -> db.sqlite3.backup-$ts"
+        Write-OK "Database backed up -> backups/db.sqlite3.backup-$ts"
+
+        # Prune old backups, keeping only the 5 most recent
+        $backupsList = Get-ChildItem -Path $BACKUP_DIR -Filter "db.sqlite3.backup-*" |
+                       Where-Object { $_.Name -notmatch "\-(wal|shm)$" } |
+                       Sort-Object LastWriteTime -Descending
+        if ($backupsList.Count -gt 5) {
+            $oldBackups = $backupsList | Select-Object -Skip 5
+            foreach ($old in $oldBackups) {
+                Remove-Item $old.FullName -Force -ErrorAction SilentlyContinue
+                foreach ($ext in @("-wal","-shm")) {
+                    Remove-Item "$($old.FullName)$ext" -Force -ErrorAction SilentlyContinue
+                }
+                Write-Info "Cleaned up old backup: $($old.Name)"
+            }
+        }
     }
 }
 
@@ -234,7 +267,7 @@ Write-Info "Copying project files..."
 
 $roboSrc  = "`"$PROJECT_DIR`""
 $roboDst  = "`"$INSTALL_DIR`""
-$roboDirs = ".git __pycache__ installer .venv node_modules tools logs attached_assets"
+$roboDirs = ".git __pycache__ installer .venv node_modules tools logs attached_assets backups"
 $roboFiles = ".replit replit.nix replit.md"
 
 $roboArgs = "$roboSrc $roboDst /E /XD $roboDirs /XF $roboFiles"
@@ -547,15 +580,37 @@ if ($useNssm) {
 # DESKTOP SHORTCUT
 # --------------------------------------------------------------
 
-Write-Info "Creating desktop shortcut..."
+Write-Info "Creating desktop shortcut with LM logo..."
 try {
+    if (Test-Path $LOGO_ICO) {
+        Copy-Item $LOGO_ICO $INSTALLED_LOGO -Force -ErrorAction SilentlyContinue
+    }
+
     $desktopPath  = [Environment]::GetFolderPath("CommonDesktopDirectory")
     if (-not (Test-Path $desktopPath)) {
         $desktopPath = [Environment]::GetFolderPath("Desktop")
     }
-    $shortcutFile = Join-Path $desktopPath "LeadManager4U.url"
-    "[InternetShortcut]`r`nURL=http://$HOST_NAME`r`nIconIndex=0`r`nIconFile=C:\Windows\System32\shell32.dll" | Set-Content -Path $shortcutFile -Encoding ASCII -Force
-    Write-OK "Desktop shortcut created -> LeadManager4U.url"
+
+    $iconPath = if (Test-Path $INSTALLED_LOGO) { $INSTALLED_LOGO } else { "C:\Windows\System32\shell32.dll" }
+
+    # Internet shortcut (.url)
+    $urlShortcut = Join-Path $desktopPath "LeadManager4U.url"
+    "[InternetShortcut]`r`nURL=http://$HOST_NAME`r`nIconIndex=0`r`nIconFile=$iconPath" | Set-Content -Path $urlShortcut -Encoding ASCII -Force
+
+    # Windows shell shortcut (.lnk)
+    try {
+        $wsh = New-Object -ComObject WScript.Shell
+        $lnkShortcut = Join-Path $desktopPath "LeadManager4U.lnk"
+        $shortcut = $wsh.CreateShortcut($lnkShortcut)
+        $shortcut.TargetPath = "http://$HOST_NAME"
+        if (Test-Path $INSTALLED_LOGO) {
+            $shortcut.IconLocation = "$INSTALLED_LOGO,0"
+        }
+        $shortcut.Description = "LeadManager4U.ai Web Application"
+        $shortcut.Save()
+    } catch {}
+
+    Write-OK "Desktop shortcut created -> LeadManager4U (LM Logo)"
 } catch {
     Write-Warn "Could not create desktop shortcut: $_"
 }

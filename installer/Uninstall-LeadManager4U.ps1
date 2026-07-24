@@ -108,11 +108,13 @@ foreach ($folder in @(
     [Environment]::GetFolderPath("CommonDesktopDirectory"),
     [Environment]::GetFolderPath("Desktop")
 )) {
-    $shortcut = Join-Path $folder "LeadManager4U.url"
-    if (Test-Path $shortcut) {
-        Remove-Item $shortcut -Force
-        Write-OK "Removed $shortcut"
-        $removed = $true
+    foreach ($scName in @("LeadManager4U.url", "LeadManager4U.lnk")) {
+        $shortcut = Join-Path $folder $scName
+        if (Test-Path $shortcut) {
+            Remove-Item $shortcut -Force
+            Write-OK "Removed $shortcut"
+            $removed = $true
+        }
     }
 }
 if (-not $removed) { Write-Info "No desktop shortcut found" }

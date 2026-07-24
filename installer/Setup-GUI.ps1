@@ -249,6 +249,9 @@ $btnInstall.Add_Click({
     $toolsDir  = Join-Path $installDir "tools"
     $nssmExe   = Join-Path $toolsDir "nssm.exe"
     $logsDir   = Join-Path $installDir "logs"
+    $backupDir    = Join-Path $installDir "backups"
+    $logoIco      = Join-Path $SCRIPT_DIR "logo.ico"
+    $installedLogo= Join-Path $installDir "logo.ico"
     $isUpgrade = Test-Path (Join-Path $installDir "manage.py")
 
     if ($isUpgrade) {
@@ -314,18 +317,51 @@ $btnInstall.Add_Click({
         New-Item -ItemType Directory -Path $installDir -Force | Out-Null
     }
 
+    if (-not (Test-Path $backupDir)) {
+        New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+    }
+
+    Get-ChildItem -Path $installDir -Filter "db.sqlite3.backup-*" -File -ErrorAction SilentlyContinue | ForEach-Object {
+        $dest = Join-Path $backupDir $_.Name
+        if (-not (Test-Path $dest)) {
+            Move-Item $_.FullName $dest -Force -ErrorAction SilentlyContinue
+        } else {
+            Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
+        }
+        Append-Log "Relocated loose backup $($_.Name) -> backups/" "INFO"
+    }
+
     if ($isUpgrade) {
         $dbFile = Join-Path $installDir "db.sqlite3"
         if (Test-Path $dbFile) {
             $ts = Get-Date -Format "yyyyMMdd-HHmmss"
-            Copy-Item $dbFile (Join-Path $installDir "db.sqlite3.backup-$ts") -Force
-            Append-Log "Database backed up -> db.sqlite3.backup-$ts" "OK"
+            $dbBackup = Join-Path $backupDir "db.sqlite3.backup-$ts"
+            Copy-Item $dbFile $dbBackup -Force
+            foreach ($ext in @("-wal","-shm")) {
+                $src = "$dbFile$ext"
+                if (Test-Path $src) { Copy-Item $src "$dbBackup$ext" -Force }
+            }
+            Append-Log "Database backed up -> backups/db.sqlite3.backup-$ts" "OK"
+
+            $backupsList = Get-ChildItem -Path $backupDir -Filter "db.sqlite3.backup-*" |
+                           Where-Object { $_.Name -notmatch "\-(wal|shm)$" } |
+                           Sort-Object LastWriteTime -Descending
+            if ($backupsList.Count -gt 5) {
+                $oldBackups = $backupsList | Select-Object -Skip 5
+                foreach ($old in $oldBackups) {
+                    Remove-Item $old.FullName -Force -ErrorAction SilentlyContinue
+                    foreach ($ext in @("-wal","-shm")) {
+                        Remove-Item "$($old.FullName)$ext" -Force -ErrorAction SilentlyContinue
+                    }
+                    Append-Log "Cleaned up old backup: $($old.Name)" "INFO"
+                }
+            }
         }
     }
 
     $roboSrc  = "`"$PROJECT_DIR`""
     $roboDst  = "`"$installDir`""
-    $roboDirs = ".git __pycache__ installer .venv node_modules tools logs attached_assets"
+    $roboDirs = ".git __pycache__ installer .venv node_modules tools logs attached_assets backups"
     $roboFiles= ".replit replit.nix replit.md"
     $roboArgs = "$roboSrc $roboDst /E /XD $roboDirs /XF $roboFiles"
     if ($isUpgrade) { $roboArgs += " /XF db.sqlite3 db.sqlite3-wal db.sqlite3-shm" }
@@ -458,10 +494,33 @@ serve(application, host="0.0.0.0", port=80, threads=4, url_scheme="http")
     $progressBar.Value = 95
     if ($chkShortcut.Checked) {
         try {
+            if (Test-Path $logoIco) {
+                Copy-Item $logoIco $installedLogo -Force -ErrorAction SilentlyContinue
+            }
+
             $dt = [Environment]::GetFolderPath("CommonDesktopDirectory")
             if (-not (Test-Path $dt)) { $dt = [Environment]::GetFolderPath("Desktop") }
-            "[InternetShortcut]`r`nURL=http://$HOST_NAME`r`nIconIndex=0`r`nIconFile=C:\Windows\System32\shell32.dll" | Set-Content -Path (Join-Path $dt "LeadManager4U.url") -Encoding ASCII -Force
-            Append-Log "Desktop shortcut created." "OK"
+
+            $iconPath = if (Test-Path $installedLogo) { $installedLogo } else { "C:\Windows\System32\shell32.dll" }
+
+            # Internet shortcut (.url)
+            $urlShortcut = Join-Path $dt "LeadManager4U.url"
+            "[InternetShortcut]`r`nURL=http://$HOST_NAME`r`nIconIndex=0`r`nIconFile=$iconPath" | Set-Content -Path $urlShortcut -Encoding ASCII -Force
+
+            # Windows shell shortcut (.lnk)
+            try {
+                $wsh = New-Object -ComObject WScript.Shell
+                $lnkShortcut = Join-Path $dt "LeadManager4U.lnk"
+                $shortcut = $wsh.CreateShortcut($lnkShortcut)
+                $shortcut.TargetPath = "http://$HOST_NAME"
+                if (Test-Path $installedLogo) {
+                    $shortcut.IconLocation = "$installedLogo,0"
+                }
+                $shortcut.Description = "LeadManager4U.ai Web Application"
+                $shortcut.Save()
+            } catch {}
+
+            Append-Log "Desktop shortcut created with LM logo." "OK"
         } catch {
             Append-Log "Shortcut creation warning: $_" "WARN"
         }
@@ -534,8 +593,10 @@ $btnUninstall.Add_Click({
     # Remove Desktop Shortcut
     $progressBar.Value = 80
     foreach ($folder in @([Environment]::GetFolderPath("CommonDesktopDirectory"), [Environment]::GetFolderPath("Desktop"))) {
-        $shortcut = Join-Path $folder "LeadManager4U.url"
-        if (Test-Path $shortcut) { Remove-Item $shortcut -Force }
+        foreach ($scName in @("LeadManager4U.url", "LeadManager4U.lnk")) {
+            $shortcut = Join-Path $folder $scName
+            if (Test-Path $shortcut) { Remove-Item $shortcut -Force }
+        }
     }
     Append-Log "Desktop shortcut removed." "OK"
 

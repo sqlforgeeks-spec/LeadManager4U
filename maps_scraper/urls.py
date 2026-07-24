@@ -74,6 +74,7 @@ urlpatterns = [
     path('api/lead/<int:listing_id>/update/', views.api_update_lead, name='api_update_lead'),
     path('api/leads/dedupe/', views.dedupe_leads, name='dedupe_leads'),
     path('api/notifications/', views.api_notifications, name='api_notifications'),
+    path('api/backup/', views.manual_backup_view, name='manual_backup'),
 
     # Job detail & controls (maps)
     path('jobs/<int:job_id>/', views.job_detail, name='job_detail'),

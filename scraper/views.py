@@ -1,3 +1,4 @@
+import os
 from django.shortcuts import render, redirect, get_object_or_404
 from django.http import HttpResponse, JsonResponse
 from django.db import close_old_connections, connection
@@ -2675,3 +2676,73 @@ def create_campaign_from_selection(request):
     if not ids_raw:
         return redirect("leads")
     return redirect(f"/campaigns/new/?listing_ids={ids_raw}")
+
+
+@csrf_exempt
+def manual_backup_view(request):
+    """Creates a timestamped copy of the database in the configured backup folder."""
+    if not request.user.is_authenticated:
+        return JsonResponse({"status": "error", "message": "Authentication required."}, status=403)
+        
+    try:
+        import shutil
+        import glob
+        from datetime import datetime
+        from django.conf import settings
+        
+        db_path = str(settings.DATABASES['default']['NAME'])
+        if not os.path.exists(db_path):
+            return JsonResponse({"status": "error", "message": "Database file not found."}, status=404)
+
+        backup_dir = os.environ.get('LEADMANAGER_BACKUP_DIR', os.environ.get('BACKUP_DIR', ''))
+        if not backup_dir:
+            if os.name == 'nt':
+                backup_dir = r'C:\LeadManager4U-Backups'
+            else:
+                backup_dir = str(settings.BASE_DIR / 'backups')
+                
+        os.makedirs(backup_dir, exist_ok=True)
+
+        ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_filename = f"db.sqlite3.backup-{ts}"
+        dest_db = os.path.join(backup_dir, backup_filename)
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("PRAGMA wal_checkpoint(FULL);")
+        except Exception:
+            pass
+
+        shutil.copy2(db_path, dest_db)
+
+        for ext in ["-wal", "-shm"]:
+            src_ext = f"{db_path}{ext}"
+            if os.path.exists(src_ext):
+                try:
+                    shutil.copy2(src_ext, f"{dest_db}{ext}")
+                except Exception:
+                    pass
+
+        pattern = os.path.join(backup_dir, "db.sqlite3.backup-*")
+        all_backups = [f for f in glob.glob(pattern) if not f.endswith(("-wal", "-shm"))]
+        all_backups.sort(key=os.path.getmtime, reverse=True)
+
+        if len(all_backups) > 5:
+            for old_file in all_backups[5:]:
+                try:
+                    os.remove(old_file)
+                    for ext in ["-wal", "-shm"]:
+                        if os.path.exists(f"{old_file}{ext}"):
+                            os.remove(f"{old_file}{ext}")
+                except Exception:
+                    pass
+
+        return JsonResponse({
+            "status": "success",
+            "message": f"Database backed up to {backup_dir}\\{backup_filename}",
+            "filename": backup_filename,
+            "backup_dir": backup_dir
+        })
+    except Exception as e:
+        return JsonResponse({"status": "error", "message": str(e)}, status=500)
+

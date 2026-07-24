@@ -6,6 +6,7 @@
 {% block topbar_actions %}
   <a href="{% url 'leads' %}" class="btn btn-secondary btn-sm">👤 All Leads</a>
   <a href="{% url 'new_campaign' %}" class="btn btn-primary btn-sm">+ New Campaign</a>
+  <button class="btn btn-ghost btn-sm" onclick="triggerManualBackup(this)" title="Create database backup">💾 Backup</button>
 {% endblock %}
 
 {% block content %}
@@ -693,5 +694,44 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) { if (timer) { clearInterval(timer); timer = null; } }
   else if (liveOn && !timer) { timer = setInterval(refresh, 12000); }
 });
+
+// ── Manual Backup Trigger ───────────────────────────────────────────────────
+function triggerManualBackup(btn) {
+  var origText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '💾 Backing up...';
+
+  fetch('{% url "manual_backup" %}', {
+    method: 'POST',
+    headers: {
+      'X-CSRFToken': '{{ csrf_token }}',
+      'Content-Type': 'application/json'
+    }
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    btn.disabled = false;
+    btn.innerHTML = origText;
+    if (data.status === 'success') {
+      showToast('✅ ' + data.message);
+    } else {
+      alert('❌ Backup failed: ' + (data.message || 'Unknown error'));
+    }
+  })
+  .catch(function(err) {
+    btn.disabled = false;
+    btn.innerHTML = origText;
+    alert('❌ Error creating backup: ' + err);
+  });
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.textContent = msg;
+  t.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#333;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;z-index:10000;opacity:0;transition:opacity 0.2s;';
+  document.body.appendChild(t);
+  setTimeout(() => t.style.opacity = '1', 10);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2500);
+}
 </script>
 {% endblock %}

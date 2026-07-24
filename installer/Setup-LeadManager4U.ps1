@@ -268,7 +268,7 @@ Write-Info "Copying project files..."
 $roboSrc  = "`"$PROJECT_DIR`""
 $roboDst  = "`"$INSTALL_DIR`""
 $roboDirs = ".git __pycache__ installer .venv node_modules tools logs attached_assets backups"
-$roboFiles = ".replit replit.nix replit.md"
+$roboFiles = ".gitignore"
 
 $roboArgs = "$roboSrc $roboDst /E /XD $roboDirs /XF $roboFiles"
 

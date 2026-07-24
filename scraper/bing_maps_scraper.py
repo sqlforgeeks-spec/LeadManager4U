@@ -79,9 +79,7 @@ class StopScrape(Exception):
 
 
 def _resolve_driver_path():
-    # Replit currently provides Firefox + geckodriver but not a Chrome
-    # executable. Prefer that pair and retain Chrome as a local-machine
-    # fallback.
+    # Detect installed Firefox + geckodriver or fallback to Chrome driver.
     geckodriver = shutil.which("geckodriver")
     firefox = shutil.which("firefox")
     if geckodriver and firefox:

@@ -10,9 +10,7 @@ DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 ALLOWED_HOSTS = ['*']
 
 CSRF_TRUSTED_ORIGINS = [
-    f"https://*.replit.dev",
-    f"https://*.repl.co",
-    f"https://*.replit.app",
+    "http://lm.ai",
     "http://localhost",
     "http://127.0.0.1",
 ]
@@ -94,16 +92,13 @@ STORAGES = {
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Allow Replit's preview iframe to load the app
+# Allow preview iframe to load the app
 X_FRAME_OPTIONS = 'ALLOWALL'
 
 # Public base URL used to build unsubscribe links in outgoing emails.
-# On Replit: set SITE_URL to your deployed domain (e.g. https://yourapp.replit.app).
-# Falls back to the dev tunnel, then localhost.
-_replit_dev = os.environ.get('REPLIT_DEV_DOMAIN', '')
 SITE_URL = os.environ.get(
     'SITE_URL',
-    f"https://{_replit_dev}" if _replit_dev else "http://localhost:5000"
+    "http://lm.ai"
 )
 
 # SMTP defaults (overridden per campaign)

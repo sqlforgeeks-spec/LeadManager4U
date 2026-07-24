@@ -362,7 +362,7 @@ $btnInstall.Add_Click({
     $roboSrc  = "`"$PROJECT_DIR`""
     $roboDst  = "`"$installDir`""
     $roboDirs = ".git __pycache__ installer .venv node_modules tools logs attached_assets backups"
-    $roboFiles= ".replit replit.nix replit.md"
+    $roboFiles= ".gitignore"
     $roboArgs = "$roboSrc $roboDst /E /XD $roboDirs /XF $roboFiles"
     if ($isUpgrade) { $roboArgs += " /XF db.sqlite3 db.sqlite3-wal db.sqlite3-shm" }
     $roboArgs += " /NFL /NDL /NJH /NJS /NC /NS /NP"
